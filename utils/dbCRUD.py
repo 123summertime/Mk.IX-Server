@@ -1,31 +1,31 @@
-from typing import Any
+from typing import Any, Union, List, Dict
+
 import pymongo
+
 
 client = pymongo.MongoClient("localhost", 27017, maxPoolSize=50)
 
 class DB_CRUD():
-    collection: Any
-
-    def __init__(self, dbName, collectionName):
+    def __init__(self, dbName, _collectionName):
         try:
-            self.collection = client[dbName][collectionName]
+            self._collection = client[dbName][_collectionName]
         except:
             raise NameError("Invalid DB or collection name")
 
-    def add(self, kv):
-        _id = self.collection.insert_one(kv).inserted_id
-        return {
-            "success": True if _id else False
-        }
+    def add(self, kv, many = False):
+        if many:
+            self._collection.insert_many(kv)
+        else:
+            self._collection.insert_one(kv)
 
-    def delete(self, kv):
-        self.collection.delete_one(kv)
+    def delete(self, kv, many = False):
+        if many:
+            self._collection.delete_many(kv)
+        else:
+            self._collection.delete_one(kv)
 
     def update(self, qkv, ukv):
-        self.collection.update_one(qkv, ukv)
+        self._collection.update_one(qkv, ukv)
 
     def query(self, kv, ignore = {}):
-        if not ignore:
-            return self.collection.find_one(kv)
-        else:
-            return self.collection.find_one(kv, ignore)
+        return self._collection.find_one(kv, ignore)

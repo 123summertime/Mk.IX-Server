@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Chat</title>
+</head>
+
+<body>
+    <h1>WebSocket Chat</h1>
+    <label>UID: <input type="text" id="token" autocomplete="off" value="" /></label>
+    <label>Pswd: <input type="text" id="pswd" autocomplete="off" value="123456" /></label>
+    <button onclick="connect(event)">Connect</button>
+    <hr>
+    <label>Group: <input type="text" id="group" autocomplete="off" value="10000" /></label>
+    <label>Message: <input type="text" id="messageText" autocomplete="off" /></label>
+    <button onclick="sendMessages(event)">Send</button>
+    <ul id='messages'>
+    </ul>
+    <script>
+        var wsConnections = new Map()
+
+        function login(uuid, pswd) {
+            return new Promise((resolve, reject) => {
+                let xhr = new XMLHttpRequest();
+                xhr.open('POST', "http://127.0.0.1:8000/token", true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                var formData = `grant_type=password&username=${uuid}&password=${pswd}`
+                xhr.send(formData);
+
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            resolve(xhr.responseText);
+                        } else {
+                            reject(new Error(`HTTP error: ${xhr.status}`));
+                        }
+                    }
+                }
+            });
+        }
+
+        function getUserInfo(jwt) {
+            return new Promise((res, rej) => {
+                let xhr = new XMLHttpRequest();
+                xhr.open('GET', "http://127.0.0.1:8000/profile", true);
+                xhr.setRequestHeader('Authorization', `Bearer ${jwt}`);
+                xhr.send();
+                xhr.onreadystatechange = function () {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            res(xhr.responseText);
+                        } else {
+                            rej(new Error(`HTTP error: ${xhr.status}`));
+                        }
+                    }
+                }
+            })
+        }
+
+        async function connect(event) {
+            var token = document.getElementById("token")
+            var pswd = document.getElementById("pswd")
+            var group = document.getElementById("group")
+            var tk = await login(token.value, pswd.value)
+            tk = JSON.parse(tk)
+            let INFO = await getUserInfo(tk['access_token'])
+            INFO = JSON.parse(INFO)
+            console.log("Connected ->", INFO['userName'])
+
+            let groups = INFO['groups']
+            for (let i = 0; i < groups.length; i++) {
+                let ws = new WebSocket("ws://localhost:8000/ws?userID=" + token.value + "&groupID=" + groups[i])
+                wsConnections.set(groups[i], ws)
+                ws.onmessage = function (event) {
+                    var messages = document.getElementById('messages')
+                    var message = document.createElement('li')
+                    var content = document.createTextNode(event.data)
+                    message.appendChild(content)
+                    messages.appendChild(message)
+                };
+                event.preventDefault()
+            }
+        }
+
+        function sendMessages(event) {
+            var input = document.getElementById("messageText")
+            var grp = document.getElementById("group")
+
+            let ws = wsConnections.get(grp.value)
+            console.log("Send To -> " + grp.value + " Msg -> " + input.value)
+            ws.send(JSON.stringify({
+                "group": grp.value,
+                "payload": input.value,
+            }))
+            input.value = ''
+            event.preventDefault()
+        }
+    </script>
+</body>
+
+</html>

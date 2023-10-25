@@ -1,9 +1,12 @@
 import random
-from uuid import uuid4
-from jose import JWTError, jwt
-from utils import dbCRUD, hash
-from schema.login import RegisterSchema
 from datetime import datetime, timedelta
+
+from uuid import uuid4
+from utils.dbCRUD import DB_CRUD
+from utils.hash import hashPassword
+from schema.login import RegisterSchema
+
+from jose import JWTError, jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
@@ -14,14 +17,14 @@ SECRET_KEY = "hw4jf6uz8o4na1rc3pf9yxr8fn3gft3m"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 2160
 DB = "UserInfo"
-COLLECTION = "Account"
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+ACC = "Account"
+OAUTH2 = OAuth2PasswordBearer(tokenUrl="token")
 
 
 
 @loginRouter.post('/register')
-async def register(userName: str, password: str, s: RegisterSchema):
-    hashedPassword = hash.hashPassword(password)
+def register(userName: str, password: str, s: RegisterSchema):
+    hashedPassword = hashPassword(password)
 
     s = RegisterSchema(
         uuid=str(uuid4().int)[::4],
@@ -30,12 +33,12 @@ async def register(userName: str, password: str, s: RegisterSchema):
         avatar="",
     )
 
-    feedback = dbCRUD.DB_CRUD(DB, COLLECTION).add(dict(s))
+    feedback = DB_CRUD(DB, ACC).add(dict(s))
     return feedback
 
 
 def getUserInfo(user_uuid):
-    return dbCRUD.DB_CRUD(DB, COLLECTION).query(
+    return DB_CRUD(DB, ACC).query(
         {"uuid": user_uuid},
         {"_id": 0, "uuid": 1, "password": 1}
     )
@@ -49,13 +52,13 @@ def createAccessToken(data: dict, expiresDelta):
 
 
 @loginRouter.post('/token')
-async def token(form_data: OAuth2PasswordRequestForm = Depends()):
+def token(form_data: OAuth2PasswordRequestForm = Depends()):
     userInfo = getUserInfo(form_data.username)
 
     if not userInfo:
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
-    hashedPassword = hash.hashPassword(form_data.password)
+    hashedPassword = hashPassword(form_data.password)
 
     if hashedPassword != userInfo["password"]:
         raise HTTPException(status_code=401, detail="Incorrect username or password")
@@ -73,13 +76,13 @@ async def token(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 def tokenDecode(uid):
-    return dbCRUD.DB_CRUD(DB, COLLECTION).query(
+    return DB_CRUD(DB, ACC).query(
         {"uuid": uid},
         {"_id": 0, "password": 0}
     )
 
 
-def getCurrentUser(token: str = Depends(oauth2_scheme)):
+def getCurrentUser(token: str = Depends(OAUTH2)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=ALGORITHM)
         uid = payload["uuid"]
@@ -89,5 +92,5 @@ def getCurrentUser(token: str = Depends(oauth2_scheme)):
 
 
 @loginRouter.get('/profile')
-async def profile(user: RegisterSchema = Depends(getCurrentUser)):
+def profile(user: RegisterSchema = Depends(getCurrentUser)):
     return user

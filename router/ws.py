@@ -1,21 +1,19 @@
-import pprint
-import copy
-from uuid import uuid4
-from utils import dbCRUD
 from typing import Dict, List
 from datetime import datetime
+
+from uuid import uuid4
 from schema.message import MessageSchema
 from utils.wsConnectionMgr import ConnectionManager, GroupConnections
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from fastapi import FastAPI, APIRouter, WebSocket, WebSocketException, Depends
 
-app = FastAPI()
+from fastapi import FastAPI, APIRouter, WebSocket, WebSocketException, Depends
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
 wsRouter = APIRouter(tags=['websockets'])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 CM = ConnectionManager()
 DB = "UserInfo"
-COLLECTION = "Account"
+ACC = "Account"
 
 
 @wsRouter.websocket("/ws")
@@ -29,9 +27,6 @@ async def GroupMessageSender(
     if groupID not in CM.online:
         CM.addConnectedGroup(groupID)
     await CM.online[groupID].connect(websocket, userID)
-
-    for x in CM.online:
-        print("Group", x, "WS", CM.online[x].onlineUsers, CM.online[x].allUsers)
 
     try:
         while True:
