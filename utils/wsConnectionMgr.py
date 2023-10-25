@@ -1,4 +1,5 @@
 from utils.dbCRUD import DB_CRUD
+from schema.message import MessageSchema
 
 DB = "UserInfo"
 GRP = "Group"
@@ -30,15 +31,27 @@ class GroupConnections:
     async def connect(self, websocket, userID):
         await websocket.accept()
 
-        DB_CRUD(DB, MSG).query({
+        offlineMsg = DB_CRUD(DB, MSG).query({
             "uuid": userID,
             "group": self.groupID
-        })
-
-        # if userID in self._offlineMessage:
-        #     for message in self._offlineMessage[userID]:
-        #         await websocket.send_json(dict(message))
-        #     del self._offlineMessage[userID]
+        }, {
+            "_id": 0,
+            "uuid": 0,
+            "group": 0
+        }, True)
+        print(offlineMsg)
+        if offlineMsg:
+            for message in offlineMsg:
+                await websocket.send_json(dict(MessageSchema(
+                    time=message["time"],
+                    type=message["type"],
+                    sender=message["sender"],
+                    payload=message["payload"],
+                )))
+            DB_CRUD(DB, MSG).delete({
+                "uuid": userID,
+                "group": self.groupID
+            }, True)
 
         self._onlineUsers.add(userID)
         self._connections.add(websocket)
@@ -58,10 +71,6 @@ class GroupConnections:
                 "sender": message.sender,
                 "payload": message.payload,
             })
-            # if user in self._offlineMessage:
-            #     self._offlineMessage[user].append(message)
-            # else:
-            #     self._offlineMessage[user] = [message]
 
         for websocket in self._connections:
             await websocket.send_json(dict(message))
