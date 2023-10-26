@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import List
 from pydantic import BaseModel
 
 class RegisterSchema(BaseModel):
@@ -6,5 +6,4 @@ class RegisterSchema(BaseModel):
     userName: str
     password: str
     avatar: str
-    online: bool = False
-    groups: Dict[str, None] = {}
+    groups: List

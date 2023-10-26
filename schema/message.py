@@ -5,3 +5,11 @@ class MessageSchema(BaseModel):
     type: str
     sender: str
     payload: str
+
+class OfflineMessageSchema(BaseModel):
+    uuid: str
+    group: str
+    time: str
+    type: str
+    sender: str
+    payload: str

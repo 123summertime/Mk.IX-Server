@@ -33,11 +33,3 @@ class DB_CRUD():
         else:
             return self._collection.find_one(kv, ignore)
 
-offlineMsg = DB_CRUD("UserInfo", "OfflineMsg").query({
-            "uuid": "1738032049",
-            "group": "10000"
-        }, {
-            "_id": 0,
-            "uuid": 0,
-            "group": 0
-        }, True)

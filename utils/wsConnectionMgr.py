@@ -1,11 +1,12 @@
 from utils.dbCRUD import DB_CRUD
-from schema.message import MessageSchema
+from schema.message import MessageSchema, OfflineMessageSchema
 
 DB = "UserInfo"
 GRP = "Group"
-MSG = "OfflineMsg"
+REF = "OfflineRef"
+STO = "OfflineStorage"
 
-
+COLLECTION_GRP = DB_CRUD(DB, GRP)
 
 class ConnectionManager:
     def __init__(self):
@@ -31,7 +32,7 @@ class GroupConnections:
     async def connect(self, websocket, userID):
         await websocket.accept()
 
-        offlineMsg = DB_CRUD(DB, MSG).query({
+        offlineMsg = DB_CRUD(DB, REF).query({
             "uuid": userID,
             "group": self.groupID
         }, {
@@ -48,7 +49,7 @@ class GroupConnections:
                     sender=message["sender"],
                     payload=message["payload"],
                 )))
-            DB_CRUD(DB, MSG).delete({
+            DB_CRUD(DB, REF).delete({
                 "uuid": userID,
                 "group": self.groupID
             }, True)
@@ -63,14 +64,15 @@ class GroupConnections:
     async def sending(self, message, userID):
         offlineUsers = self._allUsers - self._onlineUsers
         for user in offlineUsers:
-            offlineMsg = DB_CRUD(DB, MSG).add({
-                "uuid": user,
-                "group": self.groupID,
-                "time": message.time,
-                "type": message.type,
-                "sender": message.sender,
-                "payload": message.payload,
-            })
+            offlineMsg = DB_CRUD(DB, REF).add(dict(OfflineMessageSchema(
+                uuid = user,
+                group = self.groupID,
+                time = message.time,
+                type = message.type,
+                sender = message.sender,
+                payload = message.payload
+            )))
+
 
         for websocket in self._connections:
             await websocket.send_json(dict(message))
