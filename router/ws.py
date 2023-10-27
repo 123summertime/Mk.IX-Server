@@ -12,9 +12,6 @@ wsRouter = APIRouter(tags=['websockets'])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 CM = ConnectionManager()
-DB = "UserInfo"
-ACC = "Account"
-
 
 @wsRouter.websocket("/ws")
 async def GroupMessageSender(

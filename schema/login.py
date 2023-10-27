@@ -6,4 +6,4 @@ class RegisterSchema(BaseModel):
     userName: str
     password: str
     avatar: str
-    groups: List
+    groups: List = []

@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from router import login, ws
 from fastapi.middleware.cors import CORSMiddleware
 
+
 # uvicorn app:app --reload
 app = FastAPI()
 app.include_router(login.loginRouter)

@@ -1,8 +1,7 @@
-import random
+from uuid import uuid4
 from datetime import datetime, timedelta
 
-from uuid import uuid4
-from utils.dbCRUD import DB_CRUD
+from const import Auth, Collection
 from utils.hash import hashPassword
 from schema.login import RegisterSchema
 
@@ -12,14 +11,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 
 loginRouter = APIRouter(tags=['Login'])
-
-SECRET_KEY = "hw4jf6uz8o4na1rc3pf9yxr8fn3gft3m"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 2160
-DB = "UserInfo"
-ACC = "Account"
 OAUTH2 = OAuth2PasswordBearer(tokenUrl="token")
-
 
 
 @loginRouter.post('/register')
@@ -33,12 +25,12 @@ def register(userName: str, password: str, s: RegisterSchema):
         avatar="",
     )
 
-    feedback = DB_CRUD(DB, ACC).add(dict(s))
+    feedback = Collection.COLL_ACC.value.add(dict(s))
     return feedback
 
 
 def getUserInfo(user_uuid):
-    return DB_CRUD(DB, ACC).query(
+    return Collection.COLL_ACC.value.query(
         {"uuid": user_uuid},
         {"_id": 0, "uuid": 1, "password": 1}
     )
@@ -47,7 +39,7 @@ def getUserInfo(user_uuid):
 def createAccessToken(data: dict, expiresDelta):
     encode = data.copy()
     encode["exp"] = datetime.utcnow() + expiresDelta
-    token = jwt.encode(encode, SECRET_KEY, algorithm=ALGORITHM)
+    token = jwt.encode(encode, Auth.SECRET_KEY.value, algorithm=Auth.ALGORITHM.value)
     return token
 
 
@@ -63,7 +55,7 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
     if hashedPassword != userInfo["password"]:
         raise HTTPException(status_code=401, detail="Incorrect username or password")
 
-    accessTokenExpires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    accessTokenExpires = timedelta(minutes=Auth.ACCESS_TOKEN_EXPIRE_MINUTES.value)
     token = createAccessToken(
         {"uuid": userInfo["uuid"]},
         accessTokenExpires
@@ -76,7 +68,7 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
 
 
 def tokenDecode(uid):
-    return DB_CRUD(DB, ACC).query(
+    return Collection.COLL_ACC.value.query(
         {"uuid": uid},
         {"_id": 0, "password": 0}
     )
@@ -84,7 +76,7 @@ def tokenDecode(uid):
 
 def getCurrentUser(token: str = Depends(OAUTH2)):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=ALGORITHM)
+        payload = jwt.decode(token, Auth.SECRET_KEY.value, algorithms=Auth.ALGORITHM.value)
         uid = payload["uuid"]
     except JWTError:
         raise HTTPException(status_code=401, detail="Token expired")

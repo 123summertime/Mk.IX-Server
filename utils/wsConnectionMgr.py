@@ -1,12 +1,9 @@
-from utils.dbCRUD import DB_CRUD
+from uuid import uuid4
+
+from const import Collection
+from schema.storage import StorageSchema
 from schema.message import MessageSchema, OfflineMessageSchema
 
-DB = "UserInfo"
-GRP = "Group"
-REF = "OfflineRef"
-STO = "OfflineStorage"
-
-COLLECTION_GRP = DB_CRUD(DB, GRP)
 
 class ConnectionManager:
     def __init__(self):
@@ -14,7 +11,7 @@ class ConnectionManager:
 
     def addConnectedGroup(self, groupID):
         if groupID not in self.online:
-            allUsers = set(DB_CRUD(DB, GRP).query(
+            allUsers = set(Collection.COLL_GRP.value.query(
                 {"group": groupID},
                 {"_id": 0, "user": 1}
             )['user'])
@@ -32,15 +29,12 @@ class GroupConnections:
     async def connect(self, websocket, userID):
         await websocket.accept()
 
-        offlineMsg = DB_CRUD(DB, REF).query({
-            "uuid": userID,
-            "group": self.groupID
-        }, {
-            "_id": 0,
-            "uuid": 0,
-            "group": 0
-        }, True)
-        print(offlineMsg)
+        offlineMsg = Collection.COLL_REF.value.query(
+            { "uuid": userID, "group": self.groupID},
+            {"_id": 0, "uuid": 0, "group": 0},
+            True
+        )
+
         if offlineMsg:
             for message in offlineMsg:
                 await websocket.send_json(dict(MessageSchema(
@@ -49,10 +43,10 @@ class GroupConnections:
                     sender=message["sender"],
                     payload=message["payload"],
                 )))
-            DB_CRUD(DB, REF).delete({
-                "uuid": userID,
-                "group": self.groupID
-            }, True)
+            Collection.COLL_REF.value.delete(
+                {"uuid": userID,"group": self.groupID},
+                True
+            )
 
         self._onlineUsers.add(userID)
         self._connections.add(websocket)
@@ -63,16 +57,23 @@ class GroupConnections:
 
     async def sending(self, message, userID):
         offlineUsers = self._allUsers - self._onlineUsers
+
+        messageID = uuid4().hex
+        Collection.COLL_STO.value.add(dict(StorageSchema(
+            messageID = messageID,
+            refTimes = len(offlineUsers),
+            time = message.time,
+            type = message.type,
+            sender = message.sender,
+            payload = message.payload,
+        )))
+
         for user in offlineUsers:
-            offlineMsg = DB_CRUD(DB, REF).add(dict(OfflineMessageSchema(
+            Collection.COLL_REF.value.add(dict(OfflineMessageSchema(
                 uuid = user,
                 group = self.groupID,
-                time = message.time,
-                type = message.type,
-                sender = message.sender,
-                payload = message.payload
+                refTo = messageID,
             )))
-
 
         for websocket in self._connections:
             await websocket.send_json(dict(message))

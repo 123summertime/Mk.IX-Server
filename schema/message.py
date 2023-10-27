@@ -9,7 +9,4 @@ class MessageSchema(BaseModel):
 class OfflineMessageSchema(BaseModel):
     uuid: str
     group: str
-    time: str
-    type: str
-    sender: str
-    payload: str
+    refTo: str
