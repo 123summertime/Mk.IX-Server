@@ -29,24 +29,39 @@ class GroupConnections:
     async def connect(self, websocket, userID):
         await websocket.accept()
 
-        offlineMsg = Collection.COLL_REF.value.query(
+        messageID = Collection.COLL_REF.value.query(
             { "uuid": userID, "group": self.groupID},
             {"_id": 0, "uuid": 0, "group": 0},
             True
         )
 
-        if offlineMsg:
-            for message in offlineMsg:
+        if messageID:
+            for message in messageID:
+                refTo = message["refTo"]
+                storageMsg = Collection.COLL_STO.value.query(
+                    {"messageID": refTo},
+                    {"_id": 0, "messageID": 0}
+                )
+
                 await websocket.send_json(dict(MessageSchema(
-                    time=message["time"],
-                    type=message["type"],
-                    sender=message["sender"],
-                    payload=message["payload"],
+                    time=storageMsg["time"],
+                    type=storageMsg["type"],
+                    sender=storageMsg["sender"],
+                    payload=storageMsg["payload"],
                 )))
-            Collection.COLL_REF.value.delete(
-                {"uuid": userID,"group": self.groupID},
-                True
-            )
+
+                Collection.COLL_REF.value.delete(
+                    {"refTo": refTo}
+                )
+                if storageMsg["refTimes"] == 1:
+                    Collection.COLL_STO.value.delete(
+                        {"messageID": refTo},
+                    )
+                else:
+                    Collection.COLL_STO.value.update(
+                        {"messageID": refTo},
+                        {"$set": {"refTimes": storageMsg["refTimes"] - 1}}
+                    )
 
         self._onlineUsers.add(userID)
         self._connections.add(websocket)
