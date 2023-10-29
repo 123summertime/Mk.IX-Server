@@ -29,6 +29,7 @@ class GroupConnections:
     async def connect(self, websocket, userID):
         await websocket.accept()
 
+        # 获取离线消息
         messageID = Collection.COLL_REF.value.query(
             { "uuid": userID, "group": self.groupID},
             {"_id": 0, "uuid": 0, "group": 0},
@@ -36,6 +37,7 @@ class GroupConnections:
         )
 
         if messageID:
+            # 对每条消息获取其消息引用(refTo) 发送后该消息的引用-1(refTimes) 为0时删除该消息
             for message in messageID:
                 refTo = message["refTo"]
                 storageMsg = Collection.COLL_STO.value.query(

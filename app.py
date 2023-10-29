@@ -1,6 +1,6 @@
 import uvicorn
 from fastapi import FastAPI
-from router import login, ws
+from router import login, ws, group
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
 app.include_router(login.loginRouter)
 app.include_router(ws.wsRouter)
+app.include_router(group.groupRouter)
 
 app.add_middleware(
     CORSMiddleware,
