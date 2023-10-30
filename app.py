@@ -10,6 +10,7 @@ app.include_router(login.loginRouter)
 app.include_router(ws.wsRouter)
 app.include_router(group.groupRouter)
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -2,6 +2,7 @@ from uuid import uuid4
 from datetime import datetime, timedelta
 
 from const import Auth, Collection
+from middleware import tokenDecode
 from utils.hash import hashPassword
 from schema.login import RegisterSchema
 
