@@ -31,7 +31,7 @@ class GroupConnections:
 
         # 获取离线消息
         messageID = Collection.COLL_REF.value.query(
-            { "uuid": userID, "group": self.groupID},
+            {"uuid": userID, "group": self.groupID},
             {"_id": 0, "uuid": 0, "group": 0},
             True
         )
@@ -77,19 +77,19 @@ class GroupConnections:
 
         messageID = uuid4().hex
         Collection.COLL_STO.value.add(dict(StorageSchema(
-            messageID = messageID,
-            refTimes = len(offlineUsers),
-            time = message.time,
-            type = message.type,
-            sender = message.sender,
-            payload = message.payload,
+            messageID=messageID,
+            refTimes=len(offlineUsers),
+            time=message.time,
+            type=message.type,
+            sender=message.sender,
+            payload=message.payload,
         )))
 
         for user in offlineUsers:
             Collection.COLL_REF.value.add(dict(OfflineMessageSchema(
-                uuid = user,
-                group = self.groupID,
-                refTo = messageID,
+                uuid=user,
+                group=self.groupID,
+                refTo=messageID,
             )))
 
         for websocket in self._connections:

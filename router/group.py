@@ -3,9 +3,9 @@ from uuid import uuid4
 from schema.group import GroupSchema
 
 from fastapi import FastAPI, APIRouter
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 
-groupRouter = APIRouter(tags=['group'])
+groupRouter = APIRouter(tags=['Group'])
 
 @groupRouter.post("/makeGroup")
 def makeGroup(name: str):
