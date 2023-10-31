@@ -1,7 +1,8 @@
 from typing import List
 from pydantic import BaseModel
 
-class RegisterSchema(BaseModel):
+
+class UserSchema(BaseModel):
     uuid: str
     userName: str
     password: str

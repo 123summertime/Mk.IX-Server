@@ -6,19 +6,19 @@ from schema.message import MessageSchema
 from utils.wsConnectionMgr import ConnectionManager, GroupConnections
 
 from fastapi import FastAPI, APIRouter, WebSocket, WebSocketException, Depends
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer
 
 wsRouter = APIRouter(tags=['websockets'])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 CM = ConnectionManager()
+
 
 @wsRouter.websocket("/ws")
 async def GroupMessageSender(
         websocket: WebSocket,
         userID: str,
         groupID: str
-        # token = OAuth2PasswordBearer(tokenUrl="./../token")
+        # token
 ):
 
     if groupID not in CM.online:
@@ -35,5 +35,5 @@ async def GroupMessageSender(
                 sender=userID,
                 payload=message['payload']
             ), userID)
-    except:
+    except Exception:
         CM.online[groupID].disconnect(websocket, userID)

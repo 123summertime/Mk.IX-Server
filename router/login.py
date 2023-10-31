@@ -5,7 +5,7 @@ from const import Auth, Collection
 from depend.depends import getUserInfo
 from utils.hash import hashPassword
 from utils.createAccessToken import createAccessToken
-from schema.login import RegisterSchema
+from schema.user import UserSchema
 
 from jose import JWTError, jwt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,7 +20,7 @@ def register(userName: str, password: str):
     hashedPassword = hashPassword(password)
 
     userID = str(uuid4().int)[::4]
-    userInfo = RegisterSchema(
+    userInfo = UserSchema(
         uuid=userID,
         userName=userName,
         password=hashedPassword,
@@ -59,5 +59,5 @@ def token(formData: OAuth2PasswordRequestForm = Depends()):
 
 
 @loginRouter.get('/profile')
-def profile(user: RegisterSchema = Depends(getUserInfo)):
+def profile(user: UserSchema = Depends(getUserInfo)):
     return user
