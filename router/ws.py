@@ -14,12 +14,8 @@ CM = ConnectionManager()
 
 
 @wsRouter.websocket("/ws")
-async def GroupMessageSender(
-        websocket: WebSocket,
-        userID: str,
-        groupID: str
-        # token
-):
+async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str):
+    # check token here
 
     if groupID not in CM.online:
         CM.addConnectedGroup(groupID)
