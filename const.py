@@ -1,6 +1,6 @@
 from enum import Enum
 
-from utils.dbCRUD import DB_CRUD
+from utils.dbCRUD import DB_CRUD, transaction
 
 from fastapi.security import OAuth2PasswordBearer
 
@@ -20,6 +20,7 @@ class Collection(Enum):
     COLL_REF = DB_CRUD(Database.DB.value, Database.REF.value)
     COLL_STO = DB_CRUD(Database.DB.value, Database.STO.value)
     COLL_REQ = DB_CRUD(Database.DB.value, Database.REQ.value)
+    TRANSACTION = transaction
 
 
 class Auth(Enum):
