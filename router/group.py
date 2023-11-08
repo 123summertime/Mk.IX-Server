@@ -22,7 +22,12 @@ def makeGroup(name: str, user: UserSchema = Depends(getUserInfo)):
         admin=[],
         user=[user["uuid"]],
     )
+
     Collection.COLL_GRP.value.add(dict(newGroup))
+    Collection.COLL_ACC.value.update(
+        {"uuid": user["uuid"]},
+        {"$addToSet": {"groups": groupID}}
+    )
 
     return {
         "groupID": groupID

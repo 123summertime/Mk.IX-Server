@@ -11,6 +11,7 @@ class Database(Enum):
     GRP = "Group"
     REF = "OfflineRef"
     STO = "OfflineStorage"
+    REQ = "Request"
 
 
 class Collection(Enum):
@@ -18,6 +19,7 @@ class Collection(Enum):
     COLL_GRP = DB_CRUD(Database.DB.value, Database.GRP.value)
     COLL_REF = DB_CRUD(Database.DB.value, Database.REF.value)
     COLL_STO = DB_CRUD(Database.DB.value, Database.STO.value)
+    COLL_REQ = DB_CRUD(Database.DB.value, Database.REQ.value)
 
 
 class Auth(Enum):
