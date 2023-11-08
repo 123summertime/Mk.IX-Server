@@ -5,20 +5,21 @@ from depend.depends import getUserInfo
 from schema.user import UserSchema
 from schema.group import GroupSchema
 
-from fastapi import FastAPI, APIRouter, Depends
+from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 
 groupRouter = APIRouter(tags=['Group'])
 
 
 @groupRouter.post("/makeGroup")
-def makeGroup(name: str, user: UserSchema = Depends(getUserInfo)):
-
+def makeGroup(name: str, groupAvatar: str, question: str, answer: str, user: UserSchema = Depends(getUserInfo)):
     groupID = str(uuid4().int)[::4]
     newGroup = GroupSchema(
         group=groupID,
         name=name,
         owner=user["uuid"],
+        avatar=groupAvatar,
+        question={question: answer},
         admin=[],
         user=[user["uuid"]],
     )
@@ -35,46 +36,151 @@ def makeGroup(name: str, user: UserSchema = Depends(getUserInfo)):
 
 
 @groupRouter.post("/deleteGroup")
-def deleteGroup(groupID: str, user: UserSchema = Depends(getUserInfo)):
-    group = Collection.COLL_GRP.value.query(
-        {"group": groupID},
-        {"_id": 0, "owner": 1, "admin": 1, "user": 1})
+def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
+    try:
+        groupInfo = Collection.COLL_GRP.value.query(
+            {"group": group},
+            {"_id": 0, "owner": 1, "admin": 1, "user": 1}
+        )
 
-    # 解散
-    if group["owner"] == user["uuid"]:
-        try:
-            for member in group["user"]:
-                joined = Collection.COLL_ACC.value.query(
-                    {"uuid": member},
-                    {"_id": 0, "groups": 1}
-                )
-                joined.remove(groupID)
+        if not groupInfo:
+            raise Exception("Invalid group")
 
+        if groupInfo["owner"] == user["uuid"]:
+            for member in groupInfo["user"]:
                 Collection.COLL_ACC.value.update(
                     {"uuid": member},
-                    {"$set": {"groups": joined}}
+                    {"$pull": {"groups": group}}
                 )
-
             Collection.COLL_GRP.value.delete(
-                {"group": groupID}
+                {"group": group}
             )
-            return {"state": 1}
-        except Exception:
-            return {"state": 0}
-    # 退群
-    else:
-        try:
-            if user["uuid"] in group["admin"]:
-                group["admin"].remove(user["uuid"])
-            group["user"].remove(user["uuid"])
+        else:
+            if user["uuid"] in groupInfo["admin"]:
+                groupInfo["admin"].remove(user["uuid"])
+            groupInfo["user"].remove(user["uuid"])
             Collection.COLL_GRP.value.update(
-                {"group": groupID},
-                {"$set": {"admin": group["admin"],"user": group["user"]}}
+                {"group": group},
+                {"$set": {"admin": groupInfo["admin"], "user": groupInfo["user"]}}
             )
-            return {"state": 1}
-        except Exception:
-            return {"state": 0}
+        return {"state": 1}
+    except Exception as e:
+        print(e)
+        return {"state": 0}
 
 
+@groupRouter.post("/deleteUser")
+def deleteUser(who: str, group: str, user: UserSchema = Depends(getUserInfo)):
+    try:
+        groupInfo = Collection.COLL_GRP.value.query(
+            {"group": group},
+            {"_id": 0, "owner": 1, "admin": 1, "user": 1}
+        )
+
+        if not groupInfo:
+            raise Exception("Invalid group")
+        if user["uuid"] != groupInfo["owner"] and user["uuid"] not in groupInfo["admin"]:
+            raise Exception("Unauthorized")
+        if who == groupInfo["owner"] or who in groupInfo["admin"]:
+            raise Exception("Could not remove owner or admin")
+        if user["uuid"] == who:
+            raise Exception("Could not remove yourself. Use deleteGroup")
+        if who not in groupInfo["user"]:
+            raise Exception("Invalid user")
+
+        Collection.COLL_GRP.value.update(
+            {"group": group},
+            {"$pull": {"user": who}}
+        )
+        Collection.COLL_ACC.value.update(
+            {"uuid": who},
+            {"$pull": {"groups": group}}
+        )
+        return {"state": 1}
+    except Exception as e:
+        print(e)
+        return {"state": 0}
 
 
+@groupRouter.post("/admin")
+def admin(who: str, group: str, operation: bool, user: UserSchema = Depends(getUserInfo)):
+    try:
+        groupInfo = Collection.COLL_GRP.value.query(
+            {"group": group},
+            {"_id": 0, "owner": 1, "admin": 1, "user": 1}
+        )
+
+        if not groupInfo:
+            raise Exception("Invalid group")
+        if groupInfo["owner"] != user["uuid"]:
+            raise Exception("Unauthorized")
+        if groupInfo["owner"] == who:
+            raise Exception("Could not be owner and admin at the same time")
+
+        if operation:
+            if who not in groupInfo["user"]:
+                raise Exception(f"{who} is not group{group}'s user")
+            Collection.COLL_GRP.value.update(
+                {"group": group},
+                {"$addToSet": {"admin": who}}
+            )
+        else:
+            if who not in groupInfo["admin"]:
+                raise Exception(f"{who} is not group{group}'s admin")
+            Collection.COLL_GRP.value.update(
+                {"group": group},
+                {"$pull": {"admin": who}}
+            )
+        return {"state": 1}
+    except Exception as e:
+        print(e)
+        return {"state": 0}
+
+
+@groupRouter.post("/joinRequest")
+def joinRequest(group: str, user: UserSchema = Depends(getUserInfo)):
+    try:
+        groupInfo = Collection.COLL_GRP.value.query(
+            {"group": group},
+            {"_id": 0, "question": 1}
+        )
+
+        if not groupInfo:
+            raise Exception("Invalid group")
+        if group in user["groups"]:
+            raise Exception("Already Joined")
+
+        return {"state": 1, "question": list(groupInfo["question"].keys())[0]}
+    except Exception as e:
+        print(e)
+        return {"state": 0}
+
+
+@groupRouter.post("/join")
+def join(group: str, answer: str, user: UserSchema = Depends(getUserInfo)):
+    try:
+        groupInfo = Collection.COLL_GRP.value.query(
+            {"group": group},
+            {"_id": 0, "question": 1}
+        )
+
+        if not groupInfo:
+            raise Exception("Invalid group")
+        if group in user["groups"]:
+            raise Exception("Already Joined")
+        if answer != list(groupInfo["question"].values())[0]:
+            raise Exception("Incorrect answer")
+
+        Collection.COLL_GRP.value.update(
+            {"group": group},
+            {"$addToSet": {"user": user["uuid"]}}
+        )
+        Collection.COLL_ACC.value.update(
+            {"uuid": user["uuid"]},
+            {"$addToSet": {"groups": group}}
+        )
+
+        return {"state": 1}
+    except Exception as e:
+        print(e)
+        return {"state": 0}
