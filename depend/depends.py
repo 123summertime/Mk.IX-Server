@@ -1,4 +1,7 @@
+from datetime import datetime, timedelta
+
 from const import Collection, Auth
+from utils import createAccessToken
 
 from jose import JWTError, jwt
 from fastapi import HTTPException, Depends
@@ -12,6 +15,14 @@ def getUserInfo(token: str = Depends(Auth.OAUTH2.value)):
         raise HTTPException(status_code=401, detail="Token expired")
     userInfo = Collection.COLL_ACC.value.query(
         {"uuid": payload["uuid"]},
-        {"_id": 0, "password": 0}
+        {"_id": 0, "password": 0},
     )
+    # token在3h内过期, 自动续token
+    userInfo["refreshToken"] = ""
+    if datetime.now() <= datetime.fromtimestamp(payload["exp"]) <= datetime.now() + timedelta(hours=3):
+        userInfo["refreshToken"] = createAccessToken(
+            {"uuid": userInfo["uuid"]},
+            timedelta(minutes=Auth.ACCESS_TOKEN_EXPIRE_MINUTES.value)
+        )
+
     return userInfo
