@@ -6,5 +6,5 @@ class UserSchema(BaseModel):
     uuid: str
     userName: str
     password: str
-    avatar: str
+    avatar: str = ""
     groups: List = []

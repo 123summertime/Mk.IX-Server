@@ -16,15 +16,14 @@ loginRouter = APIRouter(tags=['Login'])
 
 
 @loginRouter.post('/register')
-def register(userName: str, password: str, userAvatar: str):
+def register(userName: str, password: str):
     hashedPassword = hashPassword(password)
 
     userID = str(uuid4().int)[::4]
     userInfo = UserSchema(
         uuid=userID,
         userName=userName,
-        password=hashedPassword,
-        avatar=userAvatar,
+        password=hashedPassword
     )
     Collection.COLL_ACC.value.add(dict(userInfo))
 
