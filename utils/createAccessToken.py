@@ -6,7 +6,7 @@ from const import Auth
 
 def createAccessToken(data: dict, expiresDelta, isBot):
     encode = data.copy()
-    if isBot:
+    if isBot == "1":
         encode["exp"] = datetime.utcnow() + 525600
     else:
         encode["exp"] = datetime.utcnow() + expiresDelta

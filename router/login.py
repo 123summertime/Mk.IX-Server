@@ -2,7 +2,7 @@ from uuid import uuid4
 from datetime import datetime, timedelta
 
 from const import Auth, Collection
-from depend.depends import getUserInfo
+from depend.depends import getUserInfo, checker
 from utils.hash import hashPassword
 from utils.createAccessToken import createAccessToken
 from schema.user import UserSchema
@@ -31,7 +31,7 @@ def register(userName: str, password: str):
 
 
 @loginRouter.post('/token')
-def token(isBot: bool = False, formData: OAuth2PasswordRequestForm = Depends()):
+def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = "0"):
     userInfo = Collection.COLL_ACC.value.query(
         {"uuid": formData.username},
         {"_id": 0, "uuid": 1, "password": 1}
@@ -63,9 +63,6 @@ def profile(user: UserSchema = Depends(getUserInfo)):
     return user
 
 
-# @loginRouter.get('/refresh')
-# def refresh(user: UserSchema = Depends(getUserInfo)):
-#     return createAccessToken(
-#         {"uuid": user["uuid"]},
-#         timedelta(minutes=Auth.ACCESS_TOKEN_EXPIRE_MINUTES.value)
-#     )
+@loginRouter.get('/check')
+def check(ret: UserSchema = Depends(checker)):
+    return True
