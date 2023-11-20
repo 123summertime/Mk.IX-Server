@@ -31,7 +31,7 @@ def register(userName: str, password: str):
 
 
 @loginRouter.post('/token')
-def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = "0"):
+def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: str = "0"):
     userInfo = Collection.COLL_ACC.value.query(
         {"uuid": formData.username},
         {"_id": 0, "uuid": 1, "password": 1}
@@ -47,9 +47,8 @@ def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = "0"):
 
     accessTokenExpires = timedelta(minutes=Auth.ACCESS_TOKEN_EXPIRE_MINUTES.value)
     token = createAccessToken(
-        {"uuid": userInfo["uuid"]},
-        accessTokenExpires,
-        isBot
+        {"uuid": userInfo["uuid"], "bot": isBot},
+        accessTokenExpires
     )
 
     return {
@@ -64,5 +63,5 @@ def profile(user: UserSchema = Depends(getUserInfo)):
 
 
 @loginRouter.get('/check')
-def check(ret: UserSchema = Depends(checker)):
-    return True
+def check(newToken: UserSchema = Depends(checker)):
+    return newToken
