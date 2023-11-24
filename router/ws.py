@@ -1,7 +1,8 @@
+from uuid import uuid4
 from typing import Dict, List
 from datetime import datetime
 
-from uuid import uuid4
+from depend.depends import checker
 from schema.message import MessageSchema
 from utils.wsConnectionMgr import ConnectionManager, GroupConnections
 
@@ -14,9 +15,9 @@ CM = ConnectionManager()
 
 
 @wsRouter.websocket("/ws")
-async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str):
-    # check token here
-
+async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, newToken=Depends(checker)):
+    print(newToken)
+    # TODO: FIX AUTH BUG HERE
     if groupID not in CM.online:
         CM.addConnectedGroup(groupID)
     await CM.online[groupID].connect(websocket, userID)

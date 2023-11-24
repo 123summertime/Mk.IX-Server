@@ -63,5 +63,5 @@ def profile(user: UserSchema = Depends(getUserInfo)):
 
 
 @loginRouter.get('/check')
-def check(newToken: UserSchema = Depends(checker)):
+def check(newToken=Depends(checker)):
     return newToken

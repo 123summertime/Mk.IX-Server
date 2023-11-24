@@ -125,7 +125,7 @@ def admin(who: str, group: str, operation: bool, user: UserSchema = Depends(getU
     return {"state": 1}
 
 
-@groupRouter.post("/joinRequest")
+@groupRouter.get("/joinRequest")
 def joinRequest(group: str, user: UserSchema = Depends(getUserInfo)):
     groupInfo = Collection.COLL_GRP.value.query(
         {"group": group},
@@ -164,3 +164,17 @@ def join(group: str, answer: str, user: UserSchema = Depends(getUserInfo)):
     )
 
     return {"state": 1}
+
+
+@groupRouter.get('/getInfo')
+def getInfo(group: str, user: UserSchema = Depends(getUserInfo)):
+    groupInfo = Collection.COLL_GRP.value.query(
+        {"group": group},
+        {"_id": 0, "name": 1, "group": 1, "avatar": 1}
+    )
+
+    if not groupInfo:
+        raise HTTPException(status_code=403, detail="Invalid group")
+
+    return {"state": 1, "info": groupInfo}
+
