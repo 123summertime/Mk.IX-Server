@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class MessageSchema(BaseModel):
     time: str
     type: str
+    group: str
     sender: str
     payload: str
 

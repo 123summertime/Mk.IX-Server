@@ -69,7 +69,7 @@
 
             let groups = INFO['groups']
             for (let i = 0; i < groups.length; i++) {
-                let ws = new WebSocket("ws://localhost:8000/ws?userID=" + token.value + "&groupID=" + groups[i])
+                let ws = new WebSocket("ws://localhost:8000/ws?userID=" + token.value + "&groupID=" + groups[i] + "&token=1")
                 wsConnections.set(groups[i], ws)
                 ws.onmessage = function (event) {
                     var messages = document.getElementById('messages')
