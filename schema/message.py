@@ -6,6 +6,7 @@ class MessageSchema(BaseModel):
     type: str
     group: str
     sender: str
+    senderName: str
     payload: str
 
 

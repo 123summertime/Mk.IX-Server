@@ -7,4 +7,5 @@ class StorageSchema(BaseModel):
     time: str
     type: str
     sender: str
+    senderName: str
     payload: str

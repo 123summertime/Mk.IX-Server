@@ -13,11 +13,12 @@ from fastapi.security import OAuth2PasswordBearer
 
 wsRouter = APIRouter(tags=['websockets'])
 
+CACHE = dict()
 CM = ConnectionManager()
 
 
 @wsRouter.websocket("/ws")
-async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, token: str):
+async def GroupMessageSender(websocket: WebSocket, userID: str, userName: str, groupID: str, token: str):
     # try:
     #     payload = jwt.decode(token, Auth.SECRET_KEY.value, algorithms=Auth.ALGORITHM.value)
     # except JWTError:
@@ -32,12 +33,20 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, to
     try:
         while True:
             message = await websocket.receive_json()
-            print(f"User: {userID} Group: {groupID} Msg: {message}")
+            if userID in CACHE and CACHE[userID] != userName:
+                userName = Collection.COLL_ACC.value.query(
+                    {"uuid": who},
+                    {"_id": 0, "userName": 1}
+                )
+                CACHE[userID] = userName
+
+            print(f"User: {userName} Group: {groupID} Msg: {message}")
             await CM.online[message['group']].sending(MessageSchema(
                 time=str(datetime.now().timestamp()).replace(".", ""),
                 type="text",
                 group=message['group'],
                 sender=userID,
+                senderName=userName,
                 payload=message['payload']
             ), userID)
     except Exception:

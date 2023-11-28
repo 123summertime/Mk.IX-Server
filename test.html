@@ -66,11 +66,12 @@
             let INFO = await getUserInfo(tk['access_token'])
             INFO = JSON.parse(INFO)
             console.log("Connected ->", INFO['userName'])
-
             let groups = INFO['groups']
-            for (let i = 0; i < groups.length; i++) {
-                let ws = new WebSocket("ws://localhost:8000/ws?userID=" + token.value + "&groupID=" + groups[i] + "&token=1")
-                wsConnections.set(groups[i], ws)
+            console.log(groups)
+            for (const i in groups) {
+                console.log("ws://localhost:8000/ws?userID=" + token.value + "&userName=" + INFO['userName'] + "&groupID=" + i + "&token=1")
+                let ws = new WebSocket("ws://localhost:8000/ws?userID=" + token.value + "&userName=" + INFO['userName'] + "&groupID=" + i + "&token=1")
+                wsConnections.set(i, ws)
                 ws.onmessage = function (event) {
                     var messages = document.getElementById('messages')
                     var message = document.createElement('li')
@@ -87,6 +88,7 @@
             var grp = document.getElementById("group")
 
             let ws = wsConnections.get(grp.value)
+            console.log(ws)
             console.log("Send To -> " + grp.value + " Msg -> " + input.value)
             ws.send(JSON.stringify({
                 "group": grp.value,

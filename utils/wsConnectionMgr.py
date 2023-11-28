@@ -11,10 +11,14 @@ class ConnectionManager:
 
     def addConnectedGroup(self, groupID):
         if groupID not in self.online:
-            allUsers = set(Collection.COLL_GRP.value.query(
+            allUsers = Collection.COLL_GRP.value.query(
                 {"group": groupID},
                 {"_id": 0, "user": 1}
-            )['user'])
+            )
+            if "user" not in allUsers:
+                raise RuntimeError("Invalid group")
+
+            allUsers = set(allUsers["user"].keys())
             self.online[groupID] = GroupConnections(groupID, allUsers)
 
 
@@ -32,7 +36,7 @@ class GroupConnections:
         # 获取离线消息
         messageID = Collection.COLL_REF.value.query(
             {"uuid": userID, "group": self.groupID},
-            {"_id": 0, "uuid": 0, "group": 0},
+            {"_id": 0, "uuid": 0},
             True
         )
 
@@ -48,7 +52,9 @@ class GroupConnections:
                 await websocket.send_json(dict(MessageSchema(
                     time=storageMsg["time"],
                     type=storageMsg["type"],
+                    group=message["group"],
                     sender=storageMsg["sender"],
+                    senderName=storageMsg["senderName"],
                     payload=storageMsg["payload"],
                 )))
 
@@ -62,7 +68,7 @@ class GroupConnections:
                 else:
                     Collection.COLL_STO.value.update(
                         {"messageID": refTo},
-                        {"$set": {"refTimes": storageMsg["refTimes"] - 1}}
+                        {"$inc": {"refTimes": -1}}
                     )
 
         self._onlineUsers.add(userID)
@@ -82,6 +88,7 @@ class GroupConnections:
             time=message.time,
             type=message.type,
             sender=message.sender,
+            senderName=message.senderName,
             payload=message.payload,
         )))
 

@@ -12,22 +12,21 @@ groupRouter = APIRouter(tags=['Group'])
 
 
 @groupRouter.post("/makeGroup")
-def makeGroup(name: str, groupAvatar: str, question: str, answer: str, user: UserSchema = Depends(getUserInfo)):
+def makeGroup(name: str, question: str, answer: str, user: UserSchema = Depends(getUserInfo)):
     groupID = str(uuid4().int)[::4]
     newGroup = GroupSchema(
         group=groupID,
         name=name,
-        owner=user["uuid"],
-        avatar=groupAvatar,
+        owner=[user["uuid"], user["userName"]],
         question={question: answer},
-        admin=[],
-        user=[user["uuid"]],
+        admin=dict(),
+        user={user["uuid"]: user["userName"]},
     )
 
     Collection.COLL_GRP.value.add(dict(newGroup))
     Collection.COLL_ACC.value.update(
         {"uuid": user["uuid"]},
-        {"$addToSet": {"groups": groupID}}
+        {"$set": {f"groups.{groupID}": name}}
     )
 
     return {
@@ -45,23 +44,26 @@ def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
     if not groupInfo:
         raise HTTPException(status_code=403, detail="Invalid group")
 
-    if groupInfo["owner"] == user["uuid"]:
+    if groupInfo["owner"][0] == user["uuid"]:
         for member in groupInfo["user"]:
             Collection.COLL_ACC.value.update(
                 {"uuid": member},
-                {"$pull": {"groups": group}}
+                {"$unset": {f"groups.{group}": ""}}
             )
         Collection.COLL_GRP.value.delete(
             {"group": group}
         )
     else:
         if user["uuid"] in groupInfo["admin"]:
-            groupInfo["admin"].remove(user["uuid"])
-        groupInfo["user"].remove(user["uuid"])
+            Collection.COLL_GRP.value.update(
+                {"group": group},
+                {"$unset": {f"admin.{groupInfo['admin']}": ""}}
+            )
         Collection.COLL_GRP.value.update(
             {"group": group},
-            {"$set": {"admin": groupInfo["admin"], "user": groupInfo["user"]}}
+            {"$unset": {f"user.{groupInfo['user']}": ""}}
         )
+
     return {"state": 1}
 
 
@@ -74,9 +76,9 @@ def deleteUser(who: str, group: str, user: UserSchema = Depends(getUserInfo)):
 
     if not groupInfo:
         raise HTTPException(status_code=403, detail="Invalid group")
-    if user["uuid"] != groupInfo["owner"] and user["uuid"] not in groupInfo["admin"]:
+    if user["uuid"] != groupInfo["owner"][0] and user["uuid"] not in groupInfo["admin"]:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    if who == groupInfo["owner"] or who in groupInfo["admin"]:
+    if who == groupInfo["owner"][0] or who in groupInfo["admin"]:
         raise HTTPException(status_code=403, detail="Could not remove owner or admin")
     if user["uuid"] == who:
         raise HTTPException(status_code=403, detail="Could not remove yourself. Use deleteGroup")
@@ -85,11 +87,11 @@ def deleteUser(who: str, group: str, user: UserSchema = Depends(getUserInfo)):
 
     Collection.COLL_GRP.value.update(
         {"group": group},
-        {"$pull": {"user": who}}
+        {"$unset": {f"user.{who}": ""}}
     )
     Collection.COLL_ACC.value.update(
         {"uuid": who},
-        {"$pull": {"groups": group}}
+        {"$unset": {f"groups.{group}": ""}}
     )
     return {"state": 1}
 
@@ -103,24 +105,28 @@ def admin(who: str, group: str, operation: bool, user: UserSchema = Depends(getU
 
     if not groupInfo:
         raise HTTPException(status_code=403, detail="Invalid group")
-    if groupInfo["owner"] != user["uuid"]:
+    if groupInfo["owner"][0] != user["uuid"]:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    if groupInfo["owner"] == who:
+    if groupInfo["owner"][0] == who:
         raise HTTPException(status_code=403, detail="Could not be owner and admin at the same time")
 
     if operation:
         if who not in groupInfo["user"]:
-            raise HTTPException(status_code=403, detail=f"{who} is not group{group}'s user")
+            raise HTTPException(status_code=403, detail=f"{who} is not group {group}'s user")
+        adminName = Collection.COLL_ACC.value.query(
+            {"uuid": who},
+            {"_id": 0, "userName": 1}
+        )
         Collection.COLL_GRP.value.update(
             {"group": group},
-            {"$addToSet": {"admin": who}}
+            {"$set": {f"admin.{who}": adminName["userName"]}}
         )
     else:
         if who not in groupInfo["admin"]:
-            raise HTTPException(status_code=403, detail=f"{who} is not group{group}'s admin")
+            raise HTTPException(status_code=403, detail=f"{who} is not group {group}'s admin")
         Collection.COLL_GRP.value.update(
             {"group": group},
-            {"$pull": {"admin": who}}
+            {"$unset": {f"admin.{who}": ""}}
         )
     return {"state": 1}
 
@@ -144,7 +150,7 @@ def joinRequest(group: str, user: UserSchema = Depends(getUserInfo)):
 def join(group: str, answer: str, user: UserSchema = Depends(getUserInfo)):
     groupInfo = Collection.COLL_GRP.value.query(
         {"group": group},
-        {"_id": 0, "question": 1}
+        {"_id": 0, "question": 1, "name": 1}
     )
 
     if not groupInfo:
@@ -156,11 +162,11 @@ def join(group: str, answer: str, user: UserSchema = Depends(getUserInfo)):
 
     Collection.COLL_GRP.value.update(
         {"group": group},
-        {"$addToSet": {"user": user["uuid"]}}
+        {"$set": {f"user.{user['uuid']}": user["userName"]}}
     )
     Collection.COLL_ACC.value.update(
         {"uuid": user["uuid"]},
-        {"$addToSet": {"groups": group}}
+        {"$set": {f"groups.{group}": groupInfo["name"]}}
     )
 
     return {"state": 1}
