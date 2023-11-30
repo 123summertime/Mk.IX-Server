@@ -9,6 +9,11 @@ from fastapi.security import OAuth2PasswordBearer
 
 
 def getUserInfo(token: str = Depends(Auth.OAUTH2.value)):
+    '''
+    验证通过后从数据库中获取用户信息
+    :param token: JWT Token
+    :return: 包含除了password的用户信息
+    '''
     try:
         payload = jwt.decode(token, Auth.SECRET_KEY.value, algorithms=Auth.ALGORITHM.value)
     except JWTError:
@@ -16,13 +21,18 @@ def getUserInfo(token: str = Depends(Auth.OAUTH2.value)):
 
     userInfo = Collection.COLL_ACC.value.query(
         {"uuid": payload["uuid"]},
-        {"_id": 0, "password": 0},
+        {"password": 0},
     )
 
     return userInfo
 
 
 def checker(token: str = Depends(Auth.OAUTH2.value)):
+    '''
+    验证Token是否有效 并按需刷新Token
+    :param token: JWT Token
+    :return: 空字符串或更新后的Token
+    '''
     try:
         payload = jwt.decode(token, Auth.SECRET_KEY.value, algorithms=Auth.ALGORITHM.value)
     except JWTError:

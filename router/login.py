@@ -1,9 +1,9 @@
 from uuid import uuid4
 from datetime import datetime, timedelta
 
-from const import Auth, Collection
+from const import Auth, Collection, Miscellaneous
 from depend.depends import getUserInfo, checker
-from utils.hash import hashPassword
+from utils.helper import hashPassword, timestamp
 from utils.createAccessToken import createAccessToken
 from schema.user import UserSchema
 
@@ -17,24 +17,42 @@ loginRouter = APIRouter(tags=['Login'])
 
 @loginRouter.post('/register')
 def register(userName: str, password: str):
+    '''
+    用户注册
+    :param userName: 用户名
+    :param password: 密码
+    :return: 创建的用户的uuid
+    '''
     hashedPassword = hashPassword(password)
 
     userID = str(uuid4().int)[::4]
     userInfo = UserSchema(
         uuid=userID,
         userName=userName,
-        password=hashedPassword
+        password=hashedPassword,
+        avatar=Miscellaneous.DEFAULT_AVATAR.value,
+        lastUpdate=timestamp(),
+        groups=[],
     )
+
     Collection.COLL_ACC.value.add(dict(userInfo))
 
-    return {"uuid": userID}
+    return {
+        "uuid": userID
+    }
 
 
 @loginRouter.post('/token')
 def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: str = "0"):
+    '''
+    表单验证
+    :param formData: 表单
+    :param isBot: 以Bot身份登录
+    :return: JWT Token
+    '''
     userInfo = Collection.COLL_ACC.value.query(
         {"uuid": formData.username},
-        {"_id": 0, "uuid": 1, "password": 1}
+        {"password": 1}
     )
 
     if not userInfo:
@@ -47,7 +65,7 @@ def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: str = "0"):
 
     accessTokenExpires = timedelta(minutes=Auth.ACCESS_TOKEN_EXPIRE_MINUTES.value)
     token = createAccessToken(
-        {"uuid": userInfo["uuid"], "bot": isBot},
+        {"uuid": formData.username, "bot": isBot},
         accessTokenExpires
     )
 
@@ -65,3 +83,17 @@ def profile(user: UserSchema = Depends(getUserInfo)):
 @loginRouter.get('/check')
 def check(newToken=Depends(checker)):
     return newToken
+
+
+@loginRouter.get('/getUserInfo')
+def publicProfile(uuid: str):
+    '''
+    获取用户信息
+    :param uuid: 用户uuid
+    :return: 用户的userName,avatar,lastUpdate
+    '''
+    userInfo = Collection.COLL_ACC.value.query(
+        {"uuid": uuid},
+        {"userName": 1, "avatar": 1, "lastUpdate": 1}
+    )
+    return userInfo

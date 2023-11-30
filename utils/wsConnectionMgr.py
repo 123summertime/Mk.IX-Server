@@ -1,8 +1,6 @@
-from uuid import uuid4
-
 from const import Collection
 from schema.storage import StorageSchema
-from schema.message import MessageSchema, OfflineMessageSchema
+from schema.message import GetMessageSchema, SendMessageSchema, OfflineMessageSchema
 
 
 class ConnectionManager:
@@ -13,13 +11,13 @@ class ConnectionManager:
         if groupID not in self.online:
             allUsers = Collection.COLL_GRP.value.query(
                 {"group": groupID},
-                {"_id": 0, "user": 1}
+                {"user": 1}
             )
+
             if "user" not in allUsers:
                 raise RuntimeError("Invalid group")
 
-            allUsers = set(allUsers["user"].keys())
-            self.online[groupID] = GroupConnections(groupID, allUsers)
+            self.online[groupID] = GroupConnections(groupID, set(allUsers["user"]))
 
 
 class GroupConnections:
@@ -36,7 +34,7 @@ class GroupConnections:
         # 获取离线消息
         messageID = Collection.COLL_REF.value.query(
             {"uuid": userID, "group": self.groupID},
-            {"_id": 0, "uuid": 0},
+            {"refTo": 1},
             True
         )
 
@@ -45,16 +43,16 @@ class GroupConnections:
             for message in messageID:
                 refTo = message["refTo"]
                 storageMsg = Collection.COLL_STO.value.query(
-                    {"messageID": refTo},
-                    {"_id": 0, "messageID": 0}
+                    {"_id": refTo},
+                    {"_id": 0}
                 )
 
-                await websocket.send_json(dict(MessageSchema(
+                await websocket.send_json(dict(SendMessageSchema(
                     time=storageMsg["time"],
                     type=storageMsg["type"],
-                    group=message["group"],
-                    sender=storageMsg["sender"],
-                    senderName=storageMsg["senderName"],
+                    group=self.groupID,
+                    senderID=storageMsg["senderID"],
+                    senderKey=storageMsg["senderKey"],
                     payload=storageMsg["payload"],
                 )))
 
@@ -63,11 +61,11 @@ class GroupConnections:
                 )
                 if storageMsg["refTimes"] == 1:
                     Collection.COLL_STO.value.delete(
-                        {"messageID": refTo},
+                        {"_id": refTo},
                     )
                 else:
                     Collection.COLL_STO.value.update(
-                        {"messageID": refTo},
+                        {"_id": refTo},
                         {"$inc": {"refTimes": -1}}
                     )
 
@@ -78,17 +76,21 @@ class GroupConnections:
         self._onlineUsers.remove(userID)
         self._connections.remove(websocket)
 
-    async def sending(self, message, userID):
+    async def sending(self, message):
+        userID = message.senderID
         offlineUsers = self._allUsers - self._onlineUsers
 
-        messageID = uuid4().hex
-        Collection.COLL_STO.value.add(dict(StorageSchema(
-            messageID=messageID,
+        userObjID = Collection.COLL_ACC.value.query(
+            {"uuid": message.senderID},
+            {"_id", 1}
+        )
+
+        msgObjID = Collection.COLL_STO.value.add(dict(StorageSchema(
             refTimes=len(offlineUsers),
             time=message.time,
             type=message.type,
-            sender=message.sender,
-            senderName=message.senderName,
+            senderID=message.senderID,
+            senderKey=userObjID,
             payload=message.payload,
         )))
 
@@ -96,8 +98,17 @@ class GroupConnections:
             Collection.COLL_REF.value.add(dict(OfflineMessageSchema(
                 uuid=user,
                 group=self.groupID,
-                refTo=messageID,
+                refTo=msgObjID["_id"],
             )))
 
+        sendMessage = SendMessageSchema(
+            time=message.time,
+            type=message.type,
+            group=self.groupID,
+            senderID=message.senderID,
+            senderKey=userObjID,
+            payload=message.payload,
+        )
+
         for websocket in self._connections:
-            await websocket.send_json(dict(message))
+            await websocket.send_json(dict(sendMessage))
