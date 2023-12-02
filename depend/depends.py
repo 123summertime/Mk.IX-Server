@@ -12,7 +12,7 @@ def getUserInfo(token: str = Depends(Auth.OAUTH2.value)):
     '''
     验证通过后从数据库中获取用户信息
     :param token: JWT Token
-    :return: 包含除了password的用户信息
+    :return: 包含除了password, avatar的用户信息
     '''
     try:
         payload = jwt.decode(token, Auth.SECRET_KEY.value, algorithms=Auth.ALGORITHM.value)
@@ -21,7 +21,7 @@ def getUserInfo(token: str = Depends(Auth.OAUTH2.value)):
 
     userInfo = Collection.COLL_ACC.value.query(
         {"uuid": payload["uuid"]},
-        {"password": 0},
+        {"password": 0, "avatar": 0},
     )
 
     return userInfo

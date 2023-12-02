@@ -1,3 +1,4 @@
+from typing import List
 from uuid import uuid4
 
 from const import Collection, Miscellaneous
@@ -10,6 +11,9 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 
 groupRouter = APIRouter(tags=['Group'])
+
+# TODO: 创建群时新建ws
+# TODO: 删除/退出/踢出群时断开ws
 
 
 @groupRouter.post("/makeGroup")
@@ -70,7 +74,7 @@ def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
         for objID in groupInfo["user"]:
             Collection.COLL_ACC.value.update(
                 {"_id": objID},
-                {"$pull": {"group": groupInfo["_id"]}}
+                {"$pull": {"groups": groupInfo["_id"]}}
             )
         Collection.COLL_GRP.value.delete(
             {"group": group}
@@ -194,7 +198,7 @@ def joinRequest(group: str, user: UserSchema = Depends(getUserInfo)):
 
 
 @groupRouter.post("/join")
-def join(group: str, answer: List, user: UserSchema = Depends(getUserInfo)):
+def join(group: str, answer: List[str], user: UserSchema = Depends(getUserInfo)):
     '''
     加入群聊
     :param group: 群号
@@ -240,6 +244,4 @@ def getInfo(group: str):
     if not groupInfo:
         raise HTTPException(status_code=403, detail="Invalid group")
 
-    return {
-        "info": groupInfo
-    }
+    return groupInfo

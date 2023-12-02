@@ -77,6 +77,15 @@ def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: str = "0"):
 
 @loginRouter.get('/profile')
 def profile(user: UserSchema = Depends(getUserInfo)):
+    del user["_id"]
+    groupInfoList = []
+    for groupObjID in user["groups"]:
+        groupInfo = Collection.COLL_GRP.value.query(
+            {"_id": groupObjID},
+            {"_id": 0, "group": 1, "lastUpdate": 1}
+        )
+        groupInfoList.append(groupInfo)
+    user["groups"] = groupInfoList
     return user
 
 
@@ -86,7 +95,7 @@ def check(newToken=Depends(checker)):
 
 
 @loginRouter.get('/getUserInfo')
-def publicProfile(uuid: str):
+def getUserInfo(uuid: str):
     '''
     获取用户信息
     :param uuid: 用户uuid
@@ -94,6 +103,6 @@ def publicProfile(uuid: str):
     '''
     userInfo = Collection.COLL_ACC.value.query(
         {"uuid": uuid},
-        {"userName": 1, "avatar": 1, "lastUpdate": 1}
+        {"_id": 0, "userName": 1, "avatar": 1, "lastUpdate": 1}
     )
     return userInfo
