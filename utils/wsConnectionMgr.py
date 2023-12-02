@@ -11,13 +11,21 @@ class ConnectionManager:
         if groupID not in self.online:
             allUsers = Collection.COLL_GRP.value.query(
                 {"group": groupID},
-                {"user": 1}
+                {"_id": 0, "user": 1}
             )
 
-            if "user" not in allUsers:
+            if not allUsers:
                 raise RuntimeError("Invalid group")
 
-            self.online[groupID] = GroupConnections(groupID, set(allUsers["user"]))
+            userIDs = set()
+            for objID in allUsers["user"]:
+                uuid = Collection.COLL_ACC.value.query(
+                    {"_id": objID},
+                    {"_id": 0, "uuid": 1}
+                )["uuid"]
+                userIDs.add(uuid)
+
+            self.online[groupID] = GroupConnections(groupID, userIDs)
 
 
 class GroupConnections:
@@ -77,36 +85,36 @@ class GroupConnections:
         self._connections.remove(websocket)
 
     async def sending(self, message):
-        userID = message.senderID
         offlineUsers = self._allUsers - self._onlineUsers
 
-        userObjID = Collection.COLL_ACC.value.query(
+        userInfo = Collection.COLL_ACC.value.query(
             {"uuid": message.senderID},
-            {"_id", 1}
+            {"_id": 0, "lastUpdate": 1}
         )
 
-        msgObjID = Collection.COLL_STO.value.add(dict(StorageSchema(
-            refTimes=len(offlineUsers),
-            time=message.time,
-            type=message.type,
-            senderID=message.senderID,
-            senderKey=userObjID,
-            payload=message.payload,
-        )))
-
-        for user in offlineUsers:
-            Collection.COLL_REF.value.add(dict(OfflineMessageSchema(
-                uuid=user,
-                group=self.groupID,
-                refTo=msgObjID["_id"],
+        if offlineUsers:
+            msgObjID = Collection.COLL_STO.value.add(dict(StorageSchema(
+                refTimes=len(offlineUsers),
+                time=message.time,
+                type=message.type,
+                senderID=message.senderID,
+                senderKey=userInfo["lastUpdate"],
+                payload=message.payload,
             )))
+
+            for user in offlineUsers:
+                Collection.COLL_REF.value.add(dict(OfflineMessageSchema(
+                    uuid=user,
+                    group=self.groupID,
+                    refTo=msgObjID.inserted_id,
+                )))
 
         sendMessage = SendMessageSchema(
             time=message.time,
             type=message.type,
             group=self.groupID,
             senderID=message.senderID,
-            senderKey=userObjID,
+            senderKey=userInfo["lastUpdate"],
             payload=message.payload,
         )
 

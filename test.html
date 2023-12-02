@@ -11,7 +11,7 @@
     <label>Pswd: <input type="text" id="pswd" autocomplete="off" value="123456" /></label>
     <button onclick="connect(event)">Connect</button>
     <hr>
-    <label>Group: <input type="text" id="group" autocomplete="off" value="10000" /></label>
+    <label>Group: <input type="text" id="group" autocomplete="off" value="1662546135" /></label>
     <label>Message: <input type="text" id="messageText" autocomplete="off" /></label>
     <button onclick="sendMessages(event)">Send</button>
     <ul id='messages'>
@@ -67,12 +67,11 @@
             INFO = JSON.parse(INFO)
             console.log("Connected ->", INFO['userName'])
             let groups = INFO['groups']
-            console.log(groups)
             for (const i in groups) {
-                console.log("ws://localhost:8000/ws?userID=" + token.value + "&userName=" + INFO['userName'] + "&groupID=" + i + "&token=1")
-                let ws = new WebSocket("ws://localhost:8000/ws?userID=" + token.value + "&userName=" + INFO['userName'] + "&groupID=" + i + "&token=1")
-                wsConnections.set(i, ws)
+                let ws = new WebSocket("ws://localhost:8000/ws?userID=" + token.value + "&groupID=" + groups[i]["group"] + "&token=1")
+                wsConnections.set(groups[i]["group"], ws)
                 ws.onmessage = function (event) {
+                    console.log(event)
                     var messages = document.getElementById('messages')
                     var message = document.createElement('li')
                     var content = document.createTextNode(event.data)
@@ -88,7 +87,6 @@
             var grp = document.getElementById("group")
 
             let ws = wsConnections.get(grp.value)
-            console.log(ws)
             console.log("Send To -> " + grp.value + " Msg -> " + input.value)
             ws.send(JSON.stringify({
                 "group": grp.value,

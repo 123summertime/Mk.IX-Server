@@ -5,6 +5,6 @@ class StorageSchema(BaseModel):
     refTimes: int
     time: str
     type: str
-    senderID: str
-    senderKey: str
+    senderID: str   # user uuid
+    senderKey: str  # user lastUpdate
     payload: str

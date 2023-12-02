@@ -31,13 +31,14 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, to
     try:
         while True:
             message = await websocket.receive_json()
-            print(f"User: {userName} Group: {groupID} Msg: {message}")
-            await CM.online[message["group"]].sending(GetMessageSchema(
+            print(f"User: {userID} Group: {groupID} Msg: {message}")
+            getMessage = GetMessageSchema(
                 time=timestamp(),
                 type="text",
                 group=message["group"],
                 senderID=userID,
                 payload=message["payload"]
-            ), userID)
+            )
+            await CM.online[groupID].sending(getMessage)
     except Exception:
         CM.online[groupID].disconnect(websocket, userID)
