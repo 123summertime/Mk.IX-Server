@@ -238,7 +238,7 @@ def getInfo(group: str):
     '''
     groupInfo = Collection.COLL_GRP.value.query(
         {"group": group},
-        {"_id": 0, "name": 1, "group": 1, "avatar": 1}
+        {"_id": 0, "name": 1, "lastUpdate": 1, "avatar": 1}
     )
 
     if not groupInfo:
