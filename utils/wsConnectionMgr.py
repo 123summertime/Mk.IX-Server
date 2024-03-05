@@ -1,11 +1,13 @@
-from const import Collection
+from const import Database, Collection
+from utils.dbCRUD import DB_CRUD
+from utils.helper import timestamp
 from schema.storage import StorageSchema
-from schema.message import GetMessageSchema, SendMessageSchema, OfflineMessageSchema
+from schema.message import GetMessageSchema, SendMessageSchema
 
 
 class ConnectionManager:
     def __init__(self):
-        self.online = {}
+        self.online = dict()
 
     def addConnectedGroup(self, groupID):
         if groupID not in self.online:
@@ -34,80 +36,62 @@ class GroupConnections:
         self._connections = set()
         self._onlineUsers = set()
         self._allUsers = allUsers
-        self._offlineMessage = dict()
+        self._currentGroupCollection = DB_CRUD(Database.StorageDB.value, self.groupID)
+
+    def __repr__(self):
+        return f"{self.groupID}:\n" \
+               f"All Users {self._allUsers}\n" \
+               f"Online Users {self._onlineUsers}\n"
 
     async def connect(self, websocket, userID):
         await websocket.accept()
 
-        # 获取离线消息
-        messageID = Collection.COLL_REF.value.query(
-            {"uuid": userID, "group": self.groupID},
-            {"refTo": 1},
+        lastSeen = Collection.COLL_ACC.value.query(
+            {"uuid": userID},
+            {"lastSeen": 1}
+        )["lastSeen"]
+
+        messages = self._currentGroupCollection.query(
+            {"time": {"$gt": lastSeen}},
+            {"_id": 0},
             True
         )
 
-        if messageID:
-            # 对每条消息获取其消息引用(refTo) 发送后该消息的引用-1(refTimes) 为0时删除该消息
-            for message in messageID:
-                refTo = message["refTo"]
-                storageMsg = Collection.COLL_STO.value.query(
-                    {"_id": refTo},
-                    {"_id": 0}
-                )
-
-                await websocket.send_json(dict(SendMessageSchema(
-                    time=storageMsg["time"],
-                    type=storageMsg["type"],
-                    group=self.groupID,
-                    senderID=storageMsg["senderID"],
-                    senderKey=storageMsg["senderKey"],
-                    payload=storageMsg["payload"],
-                )))
-
-                Collection.COLL_REF.value.delete(
-                    {"refTo": refTo}
-                )
-                if storageMsg["refTimes"] == 1:
-                    Collection.COLL_STO.value.delete(
-                        {"_id": refTo},
-                    )
-                else:
-                    Collection.COLL_STO.value.update(
-                        {"_id": refTo},
-                        {"$inc": {"refTimes": -1}}
-                    )
+        for msg in messages:
+            await websocket.send_json(dict(SendMessageSchema(
+                time=msg["time"],
+                type=msg["type"],
+                group=self.groupID,
+                senderID=msg["senderID"],
+                senderKey=msg["senderKey"],
+                payload=msg["payload"],
+            )))
 
         self._onlineUsers.add(userID)
         self._connections.add(websocket)
 
     def disconnect(self, websocket, userID):
+        Collection.COLL_ACC.value.update(
+            {"uuid": userID},
+            {"$set": {"lastSeen": timestamp()}},
+        )
+
         self._onlineUsers.remove(userID)
         self._connections.remove(websocket)
 
     async def sending(self, message):
-        offlineUsers = self._allUsers - self._onlineUsers
-
         userInfo = Collection.COLL_ACC.value.query(
             {"uuid": message.senderID},
             {"_id": 0, "lastUpdate": 1}
         )
 
-        if offlineUsers:
-            msgObjID = Collection.COLL_STO.value.add(dict(StorageSchema(
-                refTimes=len(offlineUsers),
-                time=message.time,
-                type=message.type,
-                senderID=message.senderID,
-                senderKey=userInfo["lastUpdate"],
-                payload=message.payload,
-            )))
-
-            for user in offlineUsers:
-                Collection.COLL_REF.value.add(dict(OfflineMessageSchema(
-                    uuid=user,
-                    group=self.groupID,
-                    refTo=msgObjID.inserted_id,
-                )))
+        self._currentGroupCollection.add(dict(StorageSchema(
+            time=message.time,
+            type=message.type,
+            senderID=message.senderID,
+            senderKey=userInfo["lastUpdate"],
+            payload=message.payload,
+        )))
 
         sendMessage = SendMessageSchema(
             time=message.time,

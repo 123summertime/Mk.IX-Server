@@ -7,5 +7,6 @@ class UserSchema(BaseModel):
     userName: str
     password: str
     avatar: str
+    lastSeen: str       # 上次下线时间
     lastUpdate: str     # 上次更新时间 只有在userName或avatar改变时才会更新
     groups: List[Any]   # 元素: 群objectID

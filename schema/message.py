@@ -17,9 +17,3 @@ class SendMessageSchema(BaseModel):
     senderID: str   # user集合中的uuid
     senderKey: str  # user集合中的lastUpdate
     payload: str
-
-
-class OfflineMessageSchema(BaseModel):
-    uuid: str
-    group: str
-    refTo: Any  # storage集合中的objectID

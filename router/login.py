@@ -31,6 +31,7 @@ def register(userName: str, password: str):
         userName=userName,
         password=hashedPassword,
         avatar=Miscellaneous.DEFAULT_AVATAR.value,
+        lastSeen=timestamp(),
         lastUpdate=timestamp(),
         groups=[],
     )

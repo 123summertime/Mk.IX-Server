@@ -245,3 +245,31 @@ def getInfo(group: str):
         raise HTTPException(status_code=403, detail="Invalid group")
 
     return groupInfo
+
+
+@groupRouter.get('/getAdminInfo')
+def getAdminInfo(group: str):
+    '''
+    获取群主/管理员信息
+    :param group: 群号
+    :return: 群群主/管理员uuid
+    '''
+    adminInfo = Collection.COLL_GRP.value.query(
+        {"group": group},
+        {"_id": 0, "owner": 1, "admin": 1}
+    )
+
+    def objID2info(objID):
+        info = Collection.COLL_ACC.value.query(
+            {"_id": objID},
+            {"_id": 0, "uuid": 1, "lastUpdate": 1}
+        )
+        return info
+
+    return {
+        "owner": objID2info(adminInfo["owner"]),
+        "admin": [objID2info(i) for i in adminInfo["admin"]]
+    }
+
+
+

@@ -7,7 +7,7 @@
 
 <body>
     <h1>WebSocket Chat</h1>
-    <label>UID: <input type="text" id="token" autocomplete="off" value="" /></label>
+    <label>UID: <input type="text" id="token" autocomplete="off" value="5031882729" /></label>
     <label>Pswd: <input type="text" id="pswd" autocomplete="off" value="123456" /></label>
     <button onclick="connect(event)">Connect</button>
     <hr>
@@ -90,6 +90,7 @@
             console.log("Send To -> " + grp.value + " Msg -> " + input.value)
             ws.send(JSON.stringify({
                 "group": grp.value,
+                "type": "text",
                 "payload": input.value,
             }))
             input.value = ''
