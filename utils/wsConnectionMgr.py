@@ -1,6 +1,6 @@
 from const import Database, Collection
 from utils.dbCRUD import DB_CRUD
-from utils.helper import timestamp
+from utils.helper import timestamp, beforeSendCheck
 from schema.storage import StorageSchema
 from schema.message import GetMessageSchema, SendMessageSchema
 
@@ -79,7 +79,10 @@ class GroupConnections:
         self._onlineUsers.remove(userID)
         self._connections.remove(websocket)
 
-    async def sending(self, message):
+    async def sending(self, userID, message):
+        if (not beforeSendCheck(userID, self.groupID, message)):
+            return
+
         userInfo = Collection.COLL_ACC.value.query(
             {"uuid": message.senderID},
             {"_id": 0, "lastUpdate": 1}
