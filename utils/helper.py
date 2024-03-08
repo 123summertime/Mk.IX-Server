@@ -14,6 +14,9 @@ def timestamp():
 
 
 def beforeSendCheck(userID, groupID, message):
+    if message.group != groupID:
+        return "Failed"
+
     if message.type == "revoke":
         DB = DB_CRUD(Database.StorageDB.value, groupID)
         getMessage = DB.query(
@@ -22,7 +25,7 @@ def beforeSendCheck(userID, groupID, message):
         )
 
         if not getMessage:
-            return False
+            return "Message is expired"
 
         userObjID = Collection.COLL_ACC.value.query(
             {"uuid": userID},
@@ -39,14 +42,14 @@ def beforeSendCheck(userID, groupID, message):
             {"owner": 1, "admin": 1}
         )
 
-        if not userID or not targetGroup:
-            return False
+        if not userObjID or not targetGroup:
+            return "Invalid user or group"
 
         isOwner = userObjID == targetGroup["owner"]
         isAdmin = userObjID in targetGroup["admin"]
 
         if userObjID == targetObjID or isOwner or (isAdmin and targetObjID != targetGroup["owner"]):
-            return True
-        return False
+            return "OK"
+        return "No permission"
 
-    return True
+    return "OK"

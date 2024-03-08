@@ -79,8 +79,18 @@ class GroupConnections:
         self._onlineUsers.remove(userID)
         self._connections.remove(websocket)
 
-    async def sending(self, userID, message):
-        if (not beforeSendCheck(userID, self.groupID, message)):
+    async def sending(self, websocket, userID, message):
+        check = beforeSendCheck(userID, self.groupID, message)
+        if check != "OK":
+            errorMsg = SendMessageSchema(
+                time="-1",
+                type="error",
+                group="-1",
+                senderID="-1",
+                senderKey="-1",
+                payload=check,
+            )
+            await websocket.send_json(dict(errorMsg))
             return
 
         userInfo = Collection.COLL_ACC.value.query(

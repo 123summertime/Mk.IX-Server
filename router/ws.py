@@ -39,7 +39,7 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, to
                 senderID=userID,
                 payload=message["payload"]
             )
-            await CM.online[groupID].sending(userID, getMessage)
+            await CM.online[groupID].sending(websocket, userID, getMessage)
     except Exception:
         print(CM.online[groupID])
         CM.online[groupID].disconnect(websocket, userID)
