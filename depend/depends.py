@@ -16,7 +16,7 @@ def getUserInfo(token: str = Depends(Auth.OAUTH2.value)):
     '''
     try:
         payload = jwt.decode(token, Auth.SECRET_KEY.value, algorithms=Auth.ALGORITHM.value)
-    except JWTError:
+    except JWTError as e:
         raise HTTPException(status_code=401, detail="Invalid token or expired")
 
     userInfo = Collection.COLL_ACC.value.query(

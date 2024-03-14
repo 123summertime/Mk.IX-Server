@@ -31,7 +31,7 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, to
     try:
         while True:
             message = await websocket.receive_json()
-            print(f"User: {userID} Group: {groupID} Msg: {message}")
+            print(f"User: {userID} Group: {groupID} Type: {message['type']} Payload: {message['payload'][:30]}")
             getMessage = GetMessageSchema(
                 time=timestamp(),
                 type=message["type"],

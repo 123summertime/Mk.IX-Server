@@ -1,11 +1,13 @@
 from typing import List
 from uuid import uuid4
+import base64
 
 from const import Collection, Miscellaneous
 from depend.depends import getUserInfo
 from utils.helper import timestamp
 from schema.user import UserSchema
 from schema.group import GroupSchema
+from schema.payload import ModifyAvatar
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
@@ -115,7 +117,7 @@ def deleteUser(who: str, group: str, user: UserSchema = Depends(getUserInfo)):
     if not groupInfo:
         raise HTTPException(status_code=403, detail="Invalid group")
     if user["_id"] != groupInfo["owner"] and user["_id"] not in groupInfo["admin"]:
-        raise HTTPException(status_code=403, detail="No permissions")
+        raise HTTPException(status_code=403, detail="No permission")
     if whoInfo["_id"] == groupInfo["owner"] or whoInfo["_id"] in groupInfo["admin"]:
         raise HTTPException(status_code=403, detail="Could not remove owner or admin")
     if user["_id"] == whoInfo["_id"]:
@@ -154,7 +156,7 @@ def admin(who: str, group: str, operation: bool, user: UserSchema = Depends(getU
     if not groupInfo:
         raise HTTPException(status_code=403, detail="Invalid group")
     if groupInfo["owner"] != user["_id"]:
-        raise HTTPException(status_code=403, detail="No permissions")
+        raise HTTPException(status_code=403, detail="No permission")
     if groupInfo["owner"] == whoInfo["_id"]:
         raise HTTPException(status_code=403, detail="Invalid operation")
 
@@ -272,4 +274,61 @@ def getAdminInfo(group: str):
     }
 
 
+@groupRouter.post('/modifyGroupName')
+def modifyGroupName(group: str, newName: str, user: UserSchema = Depends(getUserInfo)):
+    minLength = Miscellaneous.GROUP_NAME_MIN_LENGTH.value
+    maxLength = Miscellaneous.GROUP_NAME_MAX_LENGTH.value
 
+    if not (minLength <= len(newName) <= maxLength):
+        raise HTTPException(status_code=400, detail=f"Length must between [{minLength}, {maxLength}]")
+
+    groupInfo = Collection.COLL_GRP.value.query(
+        {"group": group},
+        {"_id": 1, "owner": 1, "admin": 1, "user": 1}
+    )
+
+    if not groupInfo:
+        raise HTTPException(status_code=403, detail="Invalid group")
+    if user["_id"] != groupInfo["owner"] and user["_id"] not in groupInfo["admin"]:
+        raise HTTPException(status_code=403, detail="No permission")
+
+    Collection.COLL_GRP.value.update(
+        {"group": group},
+        {"$set": {"name": newName, "lastUpdate": timestamp()}}
+    )
+
+    return {"state": 1}
+
+
+@groupRouter.post('/modifyGroupAvatar')
+def modifyGroupAvatar(group: str, newAvatar: ModifyAvatar, user: UserSchema = Depends(getUserInfo)):
+    avatar = newAvatar.avatar
+
+    minSize = Miscellaneous.GROUP_AVATAR_MIN_SIZE.value
+    maxSize = Miscellaneous.GROUP_AVATAR_MAX_SIZE.value
+
+    # 初步判定文件大小
+    if len(avatar) > maxSize * 1400:
+        raise HTTPException(status_code=400, detail=f"Size must between [{minSize}, {maxSize}]KB")
+
+    img = base64.b64decode(avatar.split(',')[1])
+    size = len(img) // 1024
+    if not (minSize <= size <= maxSize):
+        raise HTTPException(status_code=400, detail=f"Size must between [{minSize}, {maxSize}]KB")
+
+    groupInfo = Collection.COLL_GRP.value.query(
+        {"group": group},
+        {"_id": 1, "owner": 1, "admin": 1, "user": 1}
+    )
+
+    if not groupInfo:
+        raise HTTPException(status_code=403, detail="Invalid group")
+    if user["_id"] != groupInfo["owner"] and user["_id"] not in groupInfo["admin"]:
+        raise HTTPException(status_code=403, detail="No permission")
+
+    Collection.COLL_GRP.value.update(
+        {"group": group},
+        {"$set": {"avatar": avatar, "lastUpdate": timestamp()}}
+    )
+
+    return {"state": 1}
