@@ -14,6 +14,7 @@ from fastapi.security import OAuth2PasswordBearer
 
 groupRouter = APIRouter(tags=['Group'])
 
+
 # TODO: 创建群时新建ws
 # TODO: 删除/退出/踢出群时断开ws
 
@@ -276,6 +277,12 @@ def getAdminInfo(group: str):
 
 @groupRouter.post('/modifyGroupName')
 def modifyGroupName(group: str, newName: str, user: UserSchema = Depends(getUserInfo)):
+    '''
+    修改群名
+    :param group: 群号
+    :param newName: 新群名
+    :param user: 用户信息
+    '''
     minLength = Miscellaneous.GROUP_NAME_MIN_LENGTH.value
     maxLength = Miscellaneous.GROUP_NAME_MAX_LENGTH.value
 
@@ -302,12 +309,18 @@ def modifyGroupName(group: str, newName: str, user: UserSchema = Depends(getUser
 
 @groupRouter.post('/modifyGroupAvatar')
 def modifyGroupAvatar(group: str, newAvatar: ModifyAvatar, user: UserSchema = Depends(getUserInfo)):
+    '''
+    修改群头像
+    :param group: 群号
+    :param newAvatar: 新头像
+    :param user: 用户信息
+    '''
     avatar = newAvatar.avatar
 
     minSize = Miscellaneous.GROUP_AVATAR_MIN_SIZE.value
     maxSize = Miscellaneous.GROUP_AVATAR_MAX_SIZE.value
 
-    # 初步判定文件大小
+    # 初步判定文件大小 1KB文件编码后约为1400字符
     if len(avatar) > maxSize * 1400:
         raise HTTPException(status_code=400, detail=f"Size must between [{minSize}, {maxSize}]KB")
 
@@ -332,3 +345,28 @@ def modifyGroupAvatar(group: str, newAvatar: ModifyAvatar, user: UserSchema = De
     )
 
     return {"state": 1}
+
+
+@groupRouter.get('/getMembersInfo')
+def getMembersInfo(group: str):
+    '''
+    获取群成员信息
+    :param group: 群号
+    :return: 群员uuid
+    '''
+    members = Collection.COLL_GRP.value.query(
+        {"group": group},
+        {"_id": 0, "user": 1}
+    )
+
+    def objID2info(objID):
+        info = Collection.COLL_ACC.value.query(
+            {"_id": objID},
+            {"_id": 0, "uuid": 1, "lastUpdate": 1}
+        )
+        return info
+
+    membersInfo = [objID2info(i) for i in members["user"]]
+
+    return {"users": membersInfo}
+
