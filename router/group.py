@@ -5,6 +5,7 @@ import base64
 from const import Collection, Miscellaneous
 from depend.depends import getUserInfo
 from utils.helper import timestamp
+from utils.wsConnectionMgr import CM
 from schema.user import UserSchema
 from schema.group import GroupSchema
 from schema.payload import ModifyAvatar
@@ -70,7 +71,7 @@ def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
     )
 
     if not groupInfo:
-        raise HTTPException(status_code=403, detail="Invalid group")
+        raise HTTPException(status_code=400, detail="Invalid group")
 
     # 为群主时解散 其余成员为退出
     if groupInfo["owner"] == user["_id"]:
@@ -82,6 +83,7 @@ def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
         Collection.COLL_GRP.value.delete(
             {"group": group}
         )
+        CM.removeGroup(group)
     else:
         if user["_id"] in groupInfo["admin"]:
             Collection.COLL_GRP.value.update(
@@ -92,6 +94,7 @@ def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
             {"group": group},
             {"$pull": {"user": user["_id"]}}
         )
+        CM[group].disconnect(user["uuid"])
 
     return {"state": 1}
 
@@ -114,24 +117,24 @@ def deleteUser(who: str, group: str, user: UserSchema = Depends(getUserInfo)):
     )
 
     if not who or whoInfo["_id"] not in groupInfo["user"]:
-        raise HTTPException(status_code=403, detail="Invalid user")
+        raise HTTPException(status_code=400, detail="Invalid user")
     if not groupInfo:
-        raise HTTPException(status_code=403, detail="Invalid group")
+        raise HTTPException(status_code=400, detail="Invalid group")
     if user["_id"] != groupInfo["owner"] and user["_id"] not in groupInfo["admin"]:
         raise HTTPException(status_code=403, detail="No permission")
-    if whoInfo["_id"] == groupInfo["owner"] or whoInfo["_id"] in groupInfo["admin"]:
-        raise HTTPException(status_code=403, detail="Could not remove owner or admin")
+    if whoInfo["_id"] == groupInfo["owner"] or (whoInfo["_id"] in groupInfo["admin"] and user["_id"] != groupInfo["owner"]):
+        raise HTTPException(status_code=403, detail="No permission")
     if user["_id"] == whoInfo["_id"]:
-        raise HTTPException(status_code=403, detail="Could not remove yourself")
+        raise HTTPException(status_code=400, detail="Could not remove yourself")
 
-    Collection.COLL_GRP.value.update(
-        {"group": group},
-        {"$pull": {"user": whoInfo["_id"]}}
-    )
-    Collection.COLL_ACC.value.update(
-        {"uuid": who},
-        {"$pull": {"groups": groupInfo["_id"]}}
-    )
+    # Collection.COLL_GRP.value.update(
+    #     {"group": group},
+    #     {"$pull": {"user": whoInfo["_id"]}}
+    # )
+    # Collection.COLL_ACC.value.update(
+    #     {"uuid": who},
+    #     {"$pull": {"groups": groupInfo["_id"]}}
+    # )
 
     return {"state": 1}
 
@@ -155,22 +158,22 @@ def admin(who: str, group: str, operation: bool, user: UserSchema = Depends(getU
     )
 
     if not groupInfo:
-        raise HTTPException(status_code=403, detail="Invalid group")
+        raise HTTPException(status_code=400, detail="Invalid group")
     if groupInfo["owner"] != user["_id"]:
         raise HTTPException(status_code=403, detail="No permission")
     if groupInfo["owner"] == whoInfo["_id"]:
-        raise HTTPException(status_code=403, detail="Invalid operation")
+        raise HTTPException(status_code=400, detail="Invalid operation")
 
     if operation:
         if whoInfo["_id"] not in groupInfo["user"]:
-            raise HTTPException(status_code=403, detail=f"{who} is not group {group}'s user")
+            raise HTTPException(status_code=400, detail=f"{who} is not group {group}'s user")
         Collection.COLL_GRP.value.update(
             {"group": group},
             {"$push": {"admin": whoInfo["_id"]}}
         )
     else:
         if whoInfo["_id"] not in groupInfo["admin"]:
-            raise HTTPException(status_code=403, detail=f"{who} is not group {group}'s admin")
+            raise HTTPException(status_code=400, detail=f"{who} is not group {group}'s admin")
         Collection.COLL_GRP.value.update(
             {"group": group},
             {"$pull": {"admin": whoInfo["_id"]}}

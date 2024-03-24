@@ -11,37 +11,29 @@ class ConnectionManager:
 
     def addConnectedGroup(self, groupID):
         if groupID not in self.online:
-            allUsers = Collection.COLL_GRP.value.query(
+            exist = Collection.COLL_GRP.value.query(
                 {"group": groupID},
-                {"_id": 0, "user": 1}
+                {"_id": 1}
             )
 
-            if not allUsers:
+            if not exist:
                 raise RuntimeError("Invalid group")
 
-            userIDs = set()
-            for objID in allUsers["user"]:
-                uuid = Collection.COLL_ACC.value.query(
-                    {"_id": objID},
-                    {"_id": 0, "uuid": 1}
-                )["uuid"]
-                userIDs.add(uuid)
+            self.online[groupID] = GroupConnections(groupID)
 
-            self.online[groupID] = GroupConnections(groupID, userIDs)
+    def removeGroup(self, groupID):
+        del self.online[groupID]
 
 
 class GroupConnections:
-    def __init__(self, groupID, allUsers):
+    def __init__(self, groupID):
         self.groupID = groupID
-        self._connections = set()
-        self._onlineUsers = set()
-        self._allUsers = allUsers
+        self._connections = dict() # item -> {groupID: wsConnection}
         self._currentGroupCollection = DB_CRUD(Database.StorageDB.value, self.groupID)
 
     def __repr__(self):
         return f"{self.groupID}:\n" \
-               f"All Users {self._allUsers}\n" \
-               f"Online Users {self._onlineUsers}\n"
+               f"Online Users {self._connections}\n"
 
     async def connect(self, websocket, userID):
         await websocket.accept()
@@ -67,17 +59,15 @@ class GroupConnections:
                 payload=msg["payload"],
             )))
 
-        self._onlineUsers.add(userID)
-        self._connections.add(websocket)
+        self._connections[userID] = websocket
 
-    def disconnect(self, websocket, userID):
+    def disconnect(self, userID):
         Collection.COLL_ACC.value.update(
             {"uuid": userID},
             {"$set": {"lastSeen": timestamp()}},
         )
 
-        self._onlineUsers.remove(userID)
-        self._connections.remove(websocket)
+        del self._connections[userID]
 
     async def sending(self, websocket, userID, message):
         check = beforeSendCheck(userID, self.groupID, message)
@@ -115,5 +105,8 @@ class GroupConnections:
             payload=message.payload,
         )
 
-        for websocket in self._connections:
-            await websocket.send_json(dict(sendMessage))
+        for ws in self._connections.values():
+            await ws.send_json(dict(sendMessage))
+
+
+CM = ConnectionManager()

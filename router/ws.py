@@ -6,13 +6,12 @@ from const import Auth
 from depend.depends import checker
 from schema.message import GetMessageSchema
 from utils.helper import timestamp
-from utils.wsConnectionMgr import ConnectionManager, GroupConnections
+from utils.wsConnectionMgr import CM
 
 from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, WebSocketException, Depends
 from fastapi.security import OAuth2PasswordBearer
 
 wsRouter = APIRouter(tags=['websockets'])
-CM = ConnectionManager()
 
 
 @wsRouter.websocket("/ws")
@@ -42,4 +41,4 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, to
             await CM.online[groupID].sending(websocket, userID, getMessage)
     except Exception:
         print(CM.online[groupID])
-        CM.online[groupID].disconnect(websocket, userID)
+        CM.online[groupID].disconnect(userID)
