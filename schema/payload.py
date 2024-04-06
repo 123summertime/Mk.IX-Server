@@ -1,5 +1,11 @@
 from pydantic import BaseModel
 
 
-class ModifyAvatar(BaseModel):
+class Avatar(BaseModel):
     avatar: str
+
+
+class GroupQA(BaseModel):
+    Q: str = ""
+    A: str = ""
+

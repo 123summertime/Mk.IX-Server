@@ -10,4 +10,4 @@ class GroupSchema(BaseModel):
     owner: Any          # 群主objectID
     admin: List[Any] = []    # 元素:管理员objectID
     user: List[Any] = []     # 元素:用户objectID
-    question: List[Dict[str, str]] = [] # [{question: Q, answer: A}]
+    question: Dict[str, str] = {} # {Q: A}

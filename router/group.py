@@ -5,10 +5,10 @@ import base64
 from const import Collection, Miscellaneous
 from depend.depends import getUserInfo
 from utils.helper import timestamp
-from utils.wsConnectionMgr import CM
+from utils.wsConnectionMgr import GCM
 from schema.user import UserSchema
 from schema.group import GroupSchema
-from schema.payload import ModifyAvatar
+from schema.payload import Avatar, GroupQA
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
@@ -16,20 +16,22 @@ from fastapi.security import OAuth2PasswordBearer
 groupRouter = APIRouter(tags=['Group'])
 
 
-# TODO: 创建群时新建ws
-# TODO: 删除/退出/踢出群时断开ws
-
-
 @groupRouter.post("/makeGroup")
-def makeGroup(name: str, question: str, answer: str, user: UserSchema = Depends(getUserInfo)):
+def makeGroup(name: str, QA: GroupQA, user: UserSchema = Depends(getUserInfo)):
     '''
     创建群
     :param name: 群名
-    :param question: 入群问题
-    :param answer: 入群问题答案
+    :param QA: 入群问题及答案
     :param user: 用户信息
     :return: 创建的群的uuid
     '''
+    nameMinLength, nameMaxLength = Miscellaneous.GROUP_NAME_LENGTH_RANGE.value
+    QAMinLength, QAMaxLength = Miscellaneous.GROUP_QA_LENGTH_RANGE.value
+    if not nameMinLength <= len(name) <= nameMaxLength:
+        raise HTTPException(status_code=400, detail=f"Name's length must between [{nameMinLength}, {nameMaxLength}]")
+    if (not QAMinLength <= len(QA.Q) <= QAMaxLength) or (not QAMinLength <= len(QA.A) <= QAMaxLength):
+        raise HTTPException(status_code=400, detail=f"Both question and answer's length must between [{QAMinLength}, {QAMaxLength}]")
+
     groupID = str(uuid4().int)[::4]
     ownerObjID = Collection.COLL_ACC.value.query(
         {"uuid": user["uuid"]},
@@ -42,7 +44,7 @@ def makeGroup(name: str, question: str, answer: str, user: UserSchema = Depends(
         avatar=Miscellaneous.DEFAULT_AVATAR.value,
         lastUpdate=timestamp(),
         owner=ownerObjID,
-        question=[{"question": question, "answer": answer}],
+        question={QA.Q: QA.A},
         admin=[],
         user=[ownerObjID],
     )
@@ -54,6 +56,7 @@ def makeGroup(name: str, question: str, answer: str, user: UserSchema = Depends(
     )
 
     return {
+        "state": 1,
         "groupID": groupID
     }
 
@@ -83,7 +86,7 @@ def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
         Collection.COLL_GRP.value.delete(
             {"group": group}
         )
-        CM.removeGroup(group)
+        GCM.removeGroup(group)
     else:
         if user["_id"] in groupInfo["admin"]:
             Collection.COLL_GRP.value.update(
@@ -94,7 +97,7 @@ def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
             {"group": group},
             {"$pull": {"user": user["_id"]}}
         )
-        CM[group].disconnect(user["uuid"])
+        GCM[group].disconnect(user["uuid"])
 
     return {"state": 1}
 
@@ -127,14 +130,15 @@ def deleteUser(who: str, group: str, user: UserSchema = Depends(getUserInfo)):
     if user["_id"] == whoInfo["_id"]:
         raise HTTPException(status_code=400, detail="Could not remove yourself")
 
-    # Collection.COLL_GRP.value.update(
-    #     {"group": group},
-    #     {"$pull": {"user": whoInfo["_id"]}}
-    # )
-    # Collection.COLL_ACC.value.update(
-    #     {"uuid": who},
-    #     {"$pull": {"groups": groupInfo["_id"]}}
-    # )
+    Collection.COLL_GRP.value.update(
+        {"group": group},
+        {"$pull": {"user": whoInfo["_id"]}}
+    )
+    Collection.COLL_ACC.value.update(
+        {"uuid": who},
+        {"$pull": {"groups": groupInfo["_id"]}}
+    )
+    GCM[group].disconnect(who)
 
     return {"state": 1}
 
@@ -182,46 +186,51 @@ def admin(who: str, group: str, operation: bool, user: UserSchema = Depends(getU
     return {"state": 1}
 
 
-@groupRouter.get("/joinRequest")
-def joinRequest(group: str, user: UserSchema = Depends(getUserInfo)):
+@groupRouter.get("/joinQuestion")
+def joinQuestion(group: str, user: UserSchema = Depends(getUserInfo)):
     '''
     获取入群问题
     :param group: 群号
     :param user: 用户信息
-    :return: 包含入群问题的List
+    :return: 入群问题
     '''
     groupInfo = Collection.COLL_GRP.value.query(
         {"group": group},
-        {"_id": 1, "question": 1}
+        {"_id": 1, "name": 1, "question": 1}
     )
 
     if not groupInfo:
-        raise HTTPException(status_code=403, detail="Invalid group")
+        raise HTTPException(status_code=400, detail="Invalid group")
     if groupInfo["_id"] in user["groups"]:
-        raise HTTPException(status_code=403, detail="Already Joined")
+        raise HTTPException(status_code=400, detail="Already Joined")
 
-    return [i["question"] for i in groupInfo["question"]]
+    return {
+        "name": groupInfo["name"],
+        "question": list(groupInfo["question"].keys())[0],
+    }
 
 
 @groupRouter.post("/join")
-def join(group: str, answer: List[str], user: UserSchema = Depends(getUserInfo)):
+def join(group: str, answer: GroupQA, user: UserSchema = Depends(getUserInfo)):
     '''
     加入群聊
     :param group: 群号
     :param answer: 入群问题答案
     :param user: 用户信息
     '''
+    answer = answer.A
+
     groupInfo = Collection.COLL_GRP.value.query(
         {"group": group},
         {"_id": 1, "question": 1}
     )
 
     if not groupInfo:
-        raise HTTPException(status_code=403, detail="Invalid group")
+        raise HTTPException(status_code=400, detail="群不存在")
     if groupInfo["_id"] in user["groups"]:
-        raise HTTPException(status_code=403, detail="Already Joined")
-    if answer != [i["answer"] for i in groupInfo["question"]]:
-        raise HTTPException(status_code=401, detail="Incorrect answer")
+        raise HTTPException(status_code=400, detail="已经加入")
+    if answer != list(groupInfo["question"].values())[0]:
+        raise HTTPException(status_code=400, detail="答案错误")
 
     Collection.COLL_GRP.value.update(
         {"group": group},
@@ -286,11 +295,10 @@ def modifyGroupName(group: str, newName: str, user: UserSchema = Depends(getUser
     :param newName: 新群名
     :param user: 用户信息
     '''
-    minLength = Miscellaneous.GROUP_NAME_MIN_LENGTH.value
-    maxLength = Miscellaneous.GROUP_NAME_MAX_LENGTH.value
+    nameMinLength, nameMaxLength = Miscellaneous.GROUP_NAME_LENGTH_RANGE.value
 
-    if not (minLength <= len(newName) <= maxLength):
-        raise HTTPException(status_code=400, detail=f"Length must between [{minLength}, {maxLength}]")
+    if not (nameMinLength <= len(newName) <= nameMaxLength):
+        raise HTTPException(status_code=400, detail=f"Length must between [{nameMinLength}, {nameMaxLength}]")
 
     groupInfo = Collection.COLL_GRP.value.query(
         {"group": group},
@@ -311,7 +319,7 @@ def modifyGroupName(group: str, newName: str, user: UserSchema = Depends(getUser
 
 
 @groupRouter.post('/modifyGroupAvatar')
-def modifyGroupAvatar(group: str, newAvatar: ModifyAvatar, user: UserSchema = Depends(getUserInfo)):
+def modifyGroupAvatar(group: str, newAvatar: Avatar, user: UserSchema = Depends(getUserInfo)):
     '''
     修改群头像
     :param group: 群号
@@ -320,17 +328,16 @@ def modifyGroupAvatar(group: str, newAvatar: ModifyAvatar, user: UserSchema = De
     '''
     avatar = newAvatar.avatar
 
-    minSize = Miscellaneous.GROUP_AVATAR_MIN_SIZE.value
-    maxSize = Miscellaneous.GROUP_AVATAR_MAX_SIZE.value
+    avatarMinSize, avatarMaxSize = Miscellaneous.GROUP_AVATAR_MIN_SIZE.value
 
     # 初步判定文件大小 1KB文件编码后约为1400字符
-    if len(avatar) > maxSize * 1400:
-        raise HTTPException(status_code=400, detail=f"Size must between [{minSize}, {maxSize}]KB")
+    if len(avatar) > avatarMaxSize * 1400:
+        raise HTTPException(status_code=400, detail=f"Size must between [{avatarMinSize}, {avatarMaxSize}]KB")
 
     img = base64.b64decode(avatar.split(',')[1])
     size = len(img) // 1024
-    if not (minSize <= size <= maxSize):
-        raise HTTPException(status_code=400, detail=f"Size must between [{minSize}, {maxSize}]KB")
+    if not (avatarMinSize <= size <= avatarMaxSize):
+        raise HTTPException(status_code=400, detail=f"Size must between [{avatarMinSize}, {avatarMaxSize}]KB")
 
     groupInfo = Collection.COLL_GRP.value.query(
         {"group": group},
@@ -373,3 +380,12 @@ def getMembersInfo(group: str):
 
     return {"users": membersInfo}
 
+
+@groupRouter.post('/joinRequest')
+def joinRequest():
+    pass
+
+
+@groupRouter.post('/inviteRequest')
+def inviteRequest():
+    pass

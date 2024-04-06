@@ -17,3 +17,10 @@ class SendMessageSchema(BaseModel):
     senderID: str   # user集合中的uuid
     senderKey: str  # user集合中的lastUpdate
     payload: str
+
+
+class SysMessageSchema(BaseModel):
+    time: str
+    type: str
+    payload: str
+

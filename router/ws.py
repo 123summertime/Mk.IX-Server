@@ -6,7 +6,7 @@ from const import Auth
 from depend.depends import checker
 from schema.message import GetMessageSchema
 from utils.helper import timestamp
-from utils.wsConnectionMgr import CM
+from utils.wsConnectionMgr import GCM, SCM
 
 from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, WebSocketException, Depends
 from fastapi.security import OAuth2PasswordBearer
@@ -23,9 +23,11 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, to
     # if payload["uuid"] != userID:
     #     raise WebSocketException(code=4003, reason="Invalid credentials")
 
-    if groupID not in CM.online:
-        CM.addConnectedGroup(groupID)
-    await CM.online[groupID].connect(websocket, userID)
+    # TODO: 检查是否在群中
+
+    if groupID not in GCM.online:
+        GCM.addConnectedGroup(groupID)
+    await GCM.online[groupID].connect(websocket, userID)
 
     try:
         while True:
@@ -38,7 +40,21 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, to
                 senderID=userID,
                 payload=message["payload"]
             )
-            await CM.online[groupID].sending(websocket, userID, getMessage)
-    except Exception:
-        print(CM.online[groupID])
-        CM.online[groupID].disconnect(userID)
+            await GCM.online[groupID].sending(websocket, userID, getMessage)
+
+    except Exception as e:
+        print("GCM", groupID, e)
+        GCM.online[groupID].disconnect(userID)
+
+
+@wsRouter.websocket('/wsSys')
+async def SystemMessageSender(websocket: WebSocket, userID: str, token: str):
+    # TODO: 验证
+
+    await SCM.connect(websocket, userID)
+    try:
+        while True:
+            await websocket.receive_json()
+    except Exception as e:
+        print("SCM", e)
+        SCM.disconnect(userID)

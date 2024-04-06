@@ -2,10 +2,10 @@ from const import Database, Collection
 from utils.dbCRUD import DB_CRUD
 from utils.helper import timestamp, beforeSendCheck
 from schema.storage import StorageSchema
-from schema.message import GetMessageSchema, SendMessageSchema
+from schema.message import GetMessageSchema, SendMessageSchema, SysMessageSchema
 
 
-class ConnectionManager:
+class GroupConnectionManager:
     def __init__(self):
         self.online = dict()
 
@@ -28,7 +28,7 @@ class ConnectionManager:
 class GroupConnections:
     def __init__(self, groupID):
         self.groupID = groupID
-        self._connections = dict() # item -> {groupID: wsConnection}
+        self._connections = dict() # item -> {userID: wsConnection}
         self._currentGroupCollection = DB_CRUD(Database.StorageDB.value, self.groupID)
 
     def __repr__(self):
@@ -72,15 +72,12 @@ class GroupConnections:
     async def sending(self, websocket, userID, message):
         check = beforeSendCheck(userID, self.groupID, message)
         if check != "OK":
-            errorMsg = SendMessageSchema(
-                time="-1",
+            sysMsg = SysMessageSchema(
+                time=timestamp(),
                 type="error",
-                group="-1",
-                senderID="-1",
-                senderKey="-1",
-                payload=check,
+                payload=check
             )
-            await websocket.send_json(dict(errorMsg))
+            await SCM.sending(userID, sysMsg)
             return
 
         userInfo = Collection.COLL_ACC.value.query(
@@ -109,4 +106,21 @@ class GroupConnections:
             await ws.send_json(dict(sendMessage))
 
 
-CM = ConnectionManager()
+class SystemConnectionsManager:
+    def __init__(self):
+        self._connections = dict() # item -> {userID: wsConnection}
+
+    async def connect(self, websocket, userID):
+        await websocket.accept()
+        self._connections[userID] = websocket
+
+    def disconnect(self, userID):
+        del self._connections[userID]
+
+    async def sending(self, userID, payload):
+        ws = self._connections[userID]
+        await ws.send_json(dict(payload))
+
+
+GCM = GroupConnectionManager()
+SCM = SystemConnectionsManager()
