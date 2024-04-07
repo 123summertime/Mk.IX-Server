@@ -24,6 +24,9 @@ class GroupConnectionManager:
     def removeGroup(self, groupID):
         del self.online[groupID]
 
+    def removeSomeoneInGroup(self, groupID, uuid):
+        self.online[groupID].disconnect(uuid)
+
 
 class GroupConnections:
     def __init__(self, groupID):
@@ -106,9 +109,12 @@ class GroupConnections:
             await ws.send_json(dict(sendMessage))
 
 
-class SystemConnectionsManager:
+class SystemConnectionManager:
     def __init__(self):
         self._connections = dict() # item -> {userID: wsConnection}
+
+    def __contains__(self, uuid):
+        return uuid in self._connections
 
     async def connect(self, websocket, userID):
         await websocket.accept()
@@ -123,4 +129,4 @@ class SystemConnectionsManager:
 
 
 GCM = GroupConnectionManager()
-SCM = SystemConnectionsManager()
+SCM = SystemConnectionManager()

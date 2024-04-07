@@ -13,6 +13,14 @@ def timestamp():
     return ("{:.6f}".format(datetime.now().timestamp())).replace(".", "")
 
 
+def objID2info(objID):
+    info = Collection.COLL_ACC.value.query(
+        {"_id": objID},
+        {"_id": 0, "uuid": 1, "lastUpdate": 1}
+    )
+    return info
+
+
 def beforeSendCheck(userID, groupID, message):
     if message.group != groupID:
         return "Failed"

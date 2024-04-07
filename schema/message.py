@@ -22,5 +22,7 @@ class SendMessageSchema(BaseModel):
 class SysMessageSchema(BaseModel):
     time: str
     type: str
+    senderID: str = ""
+    senderKey: str = ""
     payload: str
 

@@ -2,16 +2,20 @@ from typing import List
 from uuid import uuid4
 import base64
 
-from const import Collection, Miscellaneous
+from const import Database, Collection, Miscellaneous
 from depend.depends import getUserInfo
-from utils.helper import timestamp
-from utils.wsConnectionMgr import GCM
+from utils.dbCRUD import DB_CRUD
+from utils.helper import timestamp, objID2info
+from utils.wsConnectionMgr import GCM, SCM
 from schema.user import UserSchema
 from schema.group import GroupSchema
 from schema.payload import Avatar, GroupQA
+from schema.storage import RequestMsgSchema
+from schema.message import SysMessageSchema
 
 from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
+
 
 groupRouter = APIRouter(tags=['Group'])
 
@@ -97,7 +101,11 @@ def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
             {"group": group},
             {"$pull": {"user": user["_id"]}}
         )
-        GCM[group].disconnect(user["uuid"])
+        Collection.COLL_ACC.value.update(
+            {"_id": user["_id"]},
+            {"$pull": {"groups": groupInfo["_id"]}}
+        )
+        GCM.removeSomeoneInGroup(group, user["uuid"])
 
     return {"state": 1}
 
@@ -274,13 +282,6 @@ def getAdminInfo(group: str):
         {"_id": 0, "owner": 1, "admin": 1}
     )
 
-    def objID2info(objID):
-        info = Collection.COLL_ACC.value.query(
-            {"_id": objID},
-            {"_id": 0, "uuid": 1, "lastUpdate": 1}
-        )
-        return info
-
     return {
         "owner": objID2info(adminInfo["owner"]),
         "admin": [objID2info(i) for i in adminInfo["admin"]]
@@ -362,19 +363,12 @@ def getMembersInfo(group: str):
     '''
     获取群成员信息
     :param group: 群号
-    :return: 群员uuid
+    :return: 群员uuid和lastUpdate
     '''
     members = Collection.COLL_GRP.value.query(
         {"group": group},
         {"_id": 0, "user": 1}
     )
-
-    def objID2info(objID):
-        info = Collection.COLL_ACC.value.query(
-            {"_id": objID},
-            {"_id": 0, "uuid": 1, "lastUpdate": 1}
-        )
-        return info
 
     membersInfo = [objID2info(i) for i in members["user"]]
 
@@ -382,10 +376,90 @@ def getMembersInfo(group: str):
 
 
 @groupRouter.post('/joinRequest')
-def joinRequest():
+async def joinRequest(group: str, joinText: str, user: UserSchema = Depends(getUserInfo)):
+    '''
+    入群申请
+    :param group: 群号
+    :param joinText 申请信息
+    :param user: 用户信息
+    '''
+    groupInfo = Collection.COLL_GRP.value.query(
+        {"group": group},
+        {"_id": 1, "question": 1, "owner": 1, "admin": 1}
+    )
+
+    if not groupInfo:
+        raise HTTPException(status_code=400, detail="该群不存在")
+
+    time = timestamp()
+    reqCollection = DB_CRUD(Database.ReqDB.value, group)
+    admins = groupInfo["admin"] + [groupInfo["owner"]]
+
+    exist = reqCollection.query(
+        {"senderID": user["uuid"]},
+        {"time": 1, "state": 1}
+    )
+
+    if exist and exist["state"] == 0 and int(timestamp()[:10]) - int(exist["time"][:10]) \
+            < int(Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60):
+        raise HTTPException(status_code=400, detail="申请中，等待审核")
+    if groupInfo["_id"] in user["groups"]:
+        raise HTTPException(status_code=400, detail="已经加入")
+
+    sysMsg = SysMessageSchema(
+        time=time,
+        type="join",
+        senderID=user["uuid"],
+        senderKey=user["lastUpdate"],
+        payload=joinText,
+    )
+
+    requestMsg = RequestMsgSchema(
+        time=time,
+        type="join",
+        senderID=user["uuid"],
+        senderKey=user["lastUpdate"],
+        payload=joinText,
+    )
+
+    reqCollection.add(dict(requestMsg))
+
+    for objID in admins:
+        info = objID2info(objID)
+        if info["uuid"] in SCM:
+            await SCM.sending(info["uuid"], dict(sysMsg))
+
+    return {"state": 1}
+
+
+@groupRouter.post('/invite')
+def inviteRequest(targetGroup: str, user: UserSchema = Depends(getUserInfo)):
+    '''
+    入群邀请
+    :param targetGroup: 目标群号
+    :param user: 用户信息
+    '''
+    # groupConfig下邀请
+    groupInfo = Collection.COLL_GRP.value.query(
+        {"group": targetGroup},
+        {"_id": 1, "question": 1, "owner": 1, "admin": 1}
+    )
+
+    if not groupInfo:
+        raise HTTPException(status_code=400, detail="群不存在")
+
+    time = timestamp()
+
+    if not groupInfo:
+        pass
+
+    if user["_id"] != groupInfo["owner"] and user["_id"] not in groupInfo["admin"]:
+        raise HTTPException(status_code=403, detail="仅群主/管理员可以邀请")
+
+
+@groupRouter.post('/friendRequest')
+def friendRequest(targetUser: str, user: UserSchema = Depends(getUserInfo)):
+    # 个人profile下发起
     pass
 
 
-@groupRouter.post('/inviteRequest')
-def inviteRequest():
-    pass

@@ -38,9 +38,7 @@ def register(userName: str, password: str):
 
     Collection.COLL_ACC.value.add(dict(userInfo))
 
-    return {
-        "uuid": userID
-    }
+    return {"uuid": userID}
 
 
 @loginRouter.post('/token')

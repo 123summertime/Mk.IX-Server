@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from const import RequestState
+
 
 class StorageSchema(BaseModel):
     time: str
@@ -12,6 +14,7 @@ class StorageSchema(BaseModel):
 class RequestMsgSchema(BaseModel):
     time: str
     type: str
+    state: int = RequestState.WAITING.value
     senderID: str
     senderKey: str
     payload: str
