@@ -385,7 +385,7 @@ async def joinRequest(group: str, joinText: str, user: UserSchema = Depends(getU
     '''
     groupInfo = Collection.COLL_GRP.value.query(
         {"group": group},
-        {"_id": 1, "question": 1, "owner": 1, "admin": 1}
+        {"_id": 1, "lastUpdate": 1, "question": 1, "owner": 1, "admin": 1}
     )
 
     if not groupInfo:
@@ -406,30 +406,72 @@ async def joinRequest(group: str, joinText: str, user: UserSchema = Depends(getU
     if groupInfo["_id"] in user["groups"]:
         raise HTTPException(status_code=400, detail="已经加入")
 
-    sysMsg = SysMessageSchema(
+    sysMessage = SysMessageSchema(
         time=time,
         type="join",
+        group=group,
+        groupKey=groupInfo["lastUpdate"],
         senderID=user["uuid"],
         senderKey=user["lastUpdate"],
         payload=joinText,
     )
 
-    requestMsg = RequestMsgSchema(
+    requestMessage = RequestMsgSchema(
         time=time,
         type="join",
+        group=group,
+        groupKey=groupInfo["lastUpdate"],
         senderID=user["uuid"],
         senderKey=user["lastUpdate"],
         payload=joinText,
     )
 
-    reqCollection.add(dict(requestMsg))
+    reqCollection.add(dict(requestMessage))
 
     for objID in admins:
         info = objID2info(objID)
         if info["uuid"] in SCM:
-            await SCM.sending(info["uuid"], dict(sysMsg))
+            await SCM.sending(info["uuid"], dict(sysMessage))
 
     return {"state": 1}
+
+
+@groupRouter.get('/queryJoinRequest')
+async def queryJoinRequest(group: str, user: UserSchema = Depends(getUserInfo)):
+    '''
+    获取群验证消息，需要权限
+    :param group: 群号
+    :param user: 用户信息
+    '''
+    groupInfo = Collection.COLL_GRP.value.query(
+        {"group": group},
+        {"_id": 1, "lastUpdate" : 1,"question": 1, "owner": 1, "admin": 1}
+    )
+
+    if not groupInfo:
+        raise HTTPException(status_code=400, detail="群不存在")
+    if user["_id"] != groupInfo["owner"] and user["_id"] not in groupInfo["admin"]:
+        raise HTTPException(status_code=403, detail="仅群主/管理员可以获取")
+
+    reqCollection = DB_CRUD(Database.ReqDB.value, group)
+    messages = reqCollection.query(  # 获取在有效时间内的请求
+        {"time": {"$gt": str(int(timestamp()) - Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000 * 1000)}},
+        {"_id": 0},
+        True
+    )
+
+    for msg in messages:
+        sysMessage = SysMessageSchema(
+            time=msg["time"],
+            type=msg["type"],
+            group=group,
+            groupKey=groupInfo["lastUpdate"],
+            state=msg["state"],
+            senderID=msg["senderID"],
+            senderKey=msg["senderKey"],
+            payload=msg["payload"]
+        )
+        await SCM.sending(user["uuid"], dict(sysMessage))
 
 
 @groupRouter.post('/invite')
@@ -461,5 +503,3 @@ def inviteRequest(targetGroup: str, user: UserSchema = Depends(getUserInfo)):
 def friendRequest(targetUser: str, user: UserSchema = Depends(getUserInfo)):
     # 个人profile下发起
     pass
-
-

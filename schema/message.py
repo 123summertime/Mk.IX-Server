@@ -1,6 +1,8 @@
 from typing import Any
 from pydantic import BaseModel
 
+from const import RequestState
+
 
 class GetMessageSchema(BaseModel):
     time: str
@@ -22,6 +24,9 @@ class SendMessageSchema(BaseModel):
 class SysMessageSchema(BaseModel):
     time: str
     type: str
+    group: str = ""
+    groupKey: str = ""
+    state: int = RequestState.WAITING.value
     senderID: str = ""
     senderKey: str = ""
     payload: str

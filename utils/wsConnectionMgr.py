@@ -77,7 +77,7 @@ class GroupConnections:
         if check != "OK":
             sysMsg = SysMessageSchema(
                 time=timestamp(),
-                type="error",
+                type="fail",
                 payload=check
             )
             await SCM.sending(userID, sysMsg)

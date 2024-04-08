@@ -14,6 +14,8 @@ class StorageSchema(BaseModel):
 class RequestMsgSchema(BaseModel):
     time: str
     type: str
+    group: str
+    groupKey: str
     state: int = RequestState.WAITING.value
     senderID: str
     senderKey: str
