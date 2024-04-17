@@ -26,7 +26,7 @@ class SysMessageSchema(BaseModel):
     type: str
     group: str = ""
     groupKey: str = ""
-    state: int = RequestState.WAITING.value
+    state: int = RequestState.PENDING.value
     senderID: str = ""
     senderKey: str = ""
     payload: str

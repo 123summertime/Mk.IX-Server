@@ -5,6 +5,10 @@ from utils.dbCRUD import DB_CRUD
 from fastapi.security import OAuth2PasswordBearer
 
 
+class API(Enum):
+    version = "v1"
+
+
 class Database(Enum):
     UserDB = "UserInfo"
     StorageDB = "Storage"
@@ -23,12 +27,12 @@ class Auth(Enum):
     ALGORITHM = "HS256"
     SECRET_KEY = "hw4jf6uz8o4na1rc3pf9yxr8fn3gft3m"
     ACCESS_TOKEN_EXPIRE_MINUTES = 2160
-    OAUTH2 = OAuth2PasswordBearer(tokenUrl="token")
+    OAUTH2 = OAuth2PasswordBearer(tokenUrl="/v1/user/token")
 
 
 # 0等待审核 1群主已同意 2群主已拒绝 3管理员已同意 4管理员已拒绝 5用户已同意 6用户已拒绝
 class RequestState(Enum):
-    WAITING = 0
+    PENDING = 0
     ACCEPTED_BY_OWNER = 1
     REJECTED_BY_OWNER = 2
     ACCEPTED_BY_ADMIN = 3

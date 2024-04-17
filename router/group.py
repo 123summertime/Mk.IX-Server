@@ -2,14 +2,14 @@ from typing import List
 from uuid import uuid4
 import base64
 
-from const import Database, Collection, Miscellaneous
-from depend.depends import getUserInfo
+from const import API, Database, Collection, RequestState, Miscellaneous
+from depend.depends import getSelfInfo, getGroupInfo, getUserInfo
 from utils.dbCRUD import DB_CRUD
 from utils.helper import timestamp, objID2info
 from utils.wsConnectionMgr import GCM, SCM
 from schema.user import UserSchema
 from schema.group import GroupSchema
-from schema.payload import Avatar, GroupQA
+from schema.payload import Avatar, GroupQA, GroupRegister, GroupID
 from schema.storage import RequestMsgSchema
 from schema.message import SysMessageSchema
 
@@ -17,45 +17,44 @@ from fastapi import FastAPI, APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 
 
-groupRouter = APIRouter(tags=['Group'])
+groupRouter = APIRouter(prefix=f"/{API.version.value}/group", tags=['Group'])
 
 
-@groupRouter.post("/makeGroup")
-def makeGroup(name: str, QA: GroupQA, user: UserSchema = Depends(getUserInfo)):
+@groupRouter.post("/")
+def makeGroup(registerInfo: GroupRegister,
+              userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     创建群
-    :param name: 群名
-    :param QA: 入群问题及答案
-    :param user: 用户信息
+    :param registerInfo: 群名，入群问题及答案
+    :param userInfo: 用户信息
     :return: 创建的群的uuid
     '''
+    name, Q, A = registerInfo.name, registerInfo.Q, registerInfo.A
     nameMinLength, nameMaxLength = Miscellaneous.GROUP_NAME_LENGTH_RANGE.value
     QAMinLength, QAMaxLength = Miscellaneous.GROUP_QA_LENGTH_RANGE.value
+
     if not nameMinLength <= len(name) <= nameMaxLength:
-        raise HTTPException(status_code=400, detail=f"Name's length must between [{nameMinLength}, {nameMaxLength}]")
-    if (not QAMinLength <= len(QA.Q) <= QAMaxLength) or (not QAMinLength <= len(QA.A) <= QAMaxLength):
-        raise HTTPException(status_code=400, detail=f"Both question and answer's length must between [{QAMinLength}, {QAMaxLength}]")
+        raise HTTPException(status_code=400, detail=f"群名长度必须在[{nameMinLength}, {nameMaxLength}]以内")
+    if (not QAMinLength <= len(Q) <= QAMaxLength) or (not QAMinLength <= len(A) <= QAMaxLength):
+        raise HTTPException(status_code=400, detail=f"问题和答案长度必须在[{QAMinLength}, {QAMaxLength}]以内")
 
     groupID = str(uuid4().int)[::4]
-    ownerObjID = Collection.COLL_ACC.value.query(
-        {"uuid": user["uuid"]},
-        {"_id": 1}
-    )["_id"]
 
     newGroup = GroupSchema(
         group=groupID,
         name=name,
         avatar=Miscellaneous.DEFAULT_AVATAR.value,
         lastUpdate=timestamp(),
-        owner=ownerObjID,
-        question={QA.Q: QA.A},
+        owner=userInfo.id,
+        question={Q: A},
         admin=[],
-        user=[ownerObjID],
-    )
+        user=[userInfo.id],
+    ).dict()
+    del newGroup["id"]
 
     groupObjID = Collection.COLL_GRP.value.add(dict(newGroup)).inserted_id
     Collection.COLL_ACC.value.update(
-        {"uuid": user["uuid"]},
+        {"uuid": userInfo.uuid},
         {"$push": {"groups": groupObjID}}
     )
 
@@ -65,151 +64,134 @@ def makeGroup(name: str, QA: GroupQA, user: UserSchema = Depends(getUserInfo)):
     }
 
 
-@groupRouter.post("/deleteGroup")
-def deleteGroup(group: str, user: UserSchema = Depends(getUserInfo)):
+@groupRouter.delete('/{group}')
+def deleteGroup(groupInfo: GroupSchema = Depends(getGroupInfo),
+                userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     退出/解散群
-    :param group: 群号
-    :param user: 用户信息
+    :param groupInfo: 群信息
+    :param userInfo: 用户信息
     '''
-    groupInfo = Collection.COLL_GRP.value.query(
-        {"group": group},
-        {"_id": 1, "owner": 1, "admin": 1, "user": 1}
-    )
-
     if not groupInfo:
-        raise HTTPException(status_code=400, detail="Invalid group")
+        raise HTTPException(status_code=400, detail="群不存在")
 
     # 为群主时解散 其余成员为退出
-    if groupInfo["owner"] == user["_id"]:
-        for objID in groupInfo["user"]:
+    if groupInfo.owner == userInfo.id:
+        for objID in groupInfo.user:
             Collection.COLL_ACC.value.update(
                 {"_id": objID},
-                {"$pull": {"groups": groupInfo["_id"]}}
+                {"$pull": {"groups": groupInfo.id}}
             )
         Collection.COLL_GRP.value.delete(
-            {"group": group}
+            {"group": groupInfo.group}
         )
-        GCM.removeGroup(group)
+        GCM.removeGroup(groupInfo.group)
     else:
-        if user["_id"] in groupInfo["admin"]:
+        if userInfo.id in groupInfo.admin:
             Collection.COLL_GRP.value.update(
-                {"group": group},
-                {"$pull": {"admin": user["_id"]}}
+                {"group": groupInfo.group},
+                {"$pull": {"admin": userInfo.id}}
             )
         Collection.COLL_GRP.value.update(
-            {"group": group},
-            {"$pull": {"user": user["_id"]}}
+            {"group": groupInfo.group},
+            {"$pull": {"user": userInfo.id}}
         )
         Collection.COLL_ACC.value.update(
-            {"_id": user["_id"]},
-            {"$pull": {"groups": groupInfo["_id"]}}
+            {"_id": userInfo.id},
+            {"$pull": {"groups": groupInfo.id}}
         )
-        GCM.removeSomeoneInGroup(group, user["uuid"])
+        GCM.removeSomeoneInGroup(groupInfo.group, userInfo.uuid)
 
     return {"state": 1}
 
 
-@groupRouter.post("/deleteUser")
-def deleteUser(who: str, group: str, user: UserSchema = Depends(getUserInfo)):
+@groupRouter.delete("/{group}/{target}")
+def deleteUser(groupInfo: GroupSchema = Depends(getGroupInfo),
+               targetInfo: UserSchema = Depends(getUserInfo),
+               userInfo: UserSchema = Depends(getSelfInfo)):
     '''
-    踢出群
-    :param who: 被执行对象
-    :param group: 群号
-    :param user: 用户信息
+    踢出群，群主/管理员可用
+    :param groupInfo: 群信息
+    :param targetInfo: 被执行对象的信息
+    :param userInfo: 用户信息
     '''
-    groupInfo = Collection.COLL_GRP.value.query(
-        {"group": group},
-        {"_id": 1, "owner": 1, "admin": 1, "user": 1}
-    )
-    whoInfo = Collection.COLL_ACC.value.query(
-        {"uuid": who},
-        {"_id": 1}
-    )
-
-    if not who or whoInfo["_id"] not in groupInfo["user"]:
-        raise HTTPException(status_code=400, detail="Invalid user")
+    if not targetInfo or targetInfo.id not in groupInfo.user:
+        raise HTTPException(status_code=400, detail="目标用户不存在")
     if not groupInfo:
-        raise HTTPException(status_code=400, detail="Invalid group")
-    if user["_id"] != groupInfo["owner"] and user["_id"] not in groupInfo["admin"]:
-        raise HTTPException(status_code=403, detail="No permission")
-    if whoInfo["_id"] == groupInfo["owner"] or (whoInfo["_id"] in groupInfo["admin"] and user["_id"] != groupInfo["owner"]):
-        raise HTTPException(status_code=403, detail="No permission")
-    if user["_id"] == whoInfo["_id"]:
-        raise HTTPException(status_code=400, detail="Could not remove yourself")
+        raise HTTPException(status_code=400, detail="群不存在")
+    if userInfo.id != groupInfo.owner and userInfo.id not in groupInfo.admin:
+        raise HTTPException(status_code=403, detail="没有权限")
+    if userInfo.id == targetInfo.id:
+        raise HTTPException(status_code=400, detail="不能移除自己")
+    if targetInfo.id == groupInfo.owner or (targetInfo.id in groupInfo.admin and userInfo.id != groupInfo.owner):
+        raise HTTPException(status_code=403, detail="没有权限")
 
     Collection.COLL_GRP.value.update(
-        {"group": group},
-        {"$pull": {"user": whoInfo["_id"]}}
+        {"group": groupInfo.group},
+        {"$pull": {"user": targetInfo.id}}
     )
     Collection.COLL_ACC.value.update(
-        {"uuid": who},
-        {"$pull": {"groups": groupInfo["_id"]}}
+        {"uuid": groupInfo.group},
+        {"$pull": {"groups": groupInfo.id}}
     )
-    GCM[group].disconnect(who)
+    GCM.removeSomeoneInGroup(groupInfo.group, userInfo.uuid)
 
     return {"state": 1}
 
 
-@groupRouter.post("/admin")
-def admin(who: str, group: str, operation: bool, user: UserSchema = Depends(getUserInfo)):
+@groupRouter.patch("/{group}/admin/{target}")
+def admin(operation: bool,
+          groupInfo: GroupSchema = Depends(getGroupInfo),
+          targetInfo: UserSchema = Depends(getUserInfo),
+          userInfo: UserSchema = Depends(getSelfInfo)):
     '''
-    增加/减少管理员
-    :param who: 被执行对象
-    :param group: 群号
+    增加/减少管理员，仅群主可用
     :param operation: True成为管理员 False取消管理员
+    :param targetInfo: 被执行对象
+    :param groupInfo: 群号
     :param user: 用户信息
     '''
-    groupInfo = Collection.COLL_GRP.value.query(
-        {"group": group},
-        {"_id": 1, "owner": 1, "admin": 1, "user": 1}
-    )
-    whoInfo = Collection.COLL_ACC.value.query(
-        {"uuid": who},
-        {"_id": 1}
-    )
 
     if not groupInfo:
-        raise HTTPException(status_code=400, detail="Invalid group")
-    if groupInfo["owner"] != user["_id"]:
-        raise HTTPException(status_code=403, detail="No permission")
-    if groupInfo["owner"] == whoInfo["_id"]:
-        raise HTTPException(status_code=400, detail="Invalid operation")
+        raise HTTPException(status_code=400, detail="群不存在")
+    if groupInfo.owner != user.id:
+        raise HTTPException(status_code=403, detail="没有权限")
+    if groupInfo.owner == targetInfo.id:
+        raise HTTPException(status_code=400, detail="非法操作")
+    if targetInfo.id not in groupInfo.user:
+        raise HTTPException(status_code=400, detail=f"{targetInfo.userName} 不在群 {groupInfo.name} 内")
 
     if operation:
-        if whoInfo["_id"] not in groupInfo["user"]:
-            raise HTTPException(status_code=400, detail=f"{who} is not group {group}'s user")
+        if targetInfo.id in groupInfo.admin:
+            raise HTTPException(status_code=400, detail=f"{targetInfo.userName} 已经是群 {groupInfo.name} 的管理员")
         Collection.COLL_GRP.value.update(
-            {"group": group},
-            {"$push": {"admin": whoInfo["_id"]}}
+            {"group": groupInfo.group},
+            {"$push": {"admin": targetInfo.id}}
         )
     else:
-        if whoInfo["_id"] not in groupInfo["admin"]:
-            raise HTTPException(status_code=400, detail=f"{who} is not group {group}'s admin")
+        if targetInfo.id not in groupInfo.admin:
+            raise HTTPException(status_code=400, detail=f"{targetInfo.userName} 不是群 {groupInfo.name} 的管理员")
         Collection.COLL_GRP.value.update(
-            {"group": group},
-            {"$pull": {"admin": whoInfo["_id"]}}
+            {"group": groupInfo.group},
+            {"$pull": {"admin": targetInfo.id}}
         )
 
     return {"state": 1}
 
 
-@groupRouter.get("/joinQuestion")
-def joinQuestion(group: str, user: UserSchema = Depends(getUserInfo)):
+@groupRouter.get("/{group}/question")
+def joinQuestion(groupInfo: GroupSchema = Depends(getGroupInfo),
+                 userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     获取入群问题
-    :param group: 群号
-    :param user: 用户信息
+    :param groupInfo: 群信息
+    :param userInfo: 用户信息
     :return: 入群问题
     '''
-    groupInfo = Collection.COLL_GRP.value.query(
-        {"group": group},
-        {"_id": 1, "name": 1, "question": 1}
-    )
 
     if not groupInfo:
         raise HTTPException(status_code=400, detail="Invalid group")
-    if groupInfo["_id"] in user["groups"]:
+    if groupInfo["_id"] in userInfo["groups"]:
         raise HTTPException(status_code=400, detail="Already Joined")
 
     return {
@@ -219,7 +201,7 @@ def joinQuestion(group: str, user: UserSchema = Depends(getUserInfo)):
 
 
 @groupRouter.post("/join")
-def join(group: str, answer: GroupQA, user: UserSchema = Depends(getUserInfo)):
+def join(group: str, answer: GroupQA, user: UserSchema = Depends(getSelfInfo)):
     '''
     加入群聊
     :param group: 群号
@@ -289,7 +271,7 @@ def getAdminInfo(group: str):
 
 
 @groupRouter.post('/modifyGroupName')
-def modifyGroupName(group: str, newName: str, user: UserSchema = Depends(getUserInfo)):
+def modifyGroupName(group: str, newName: str, user: UserSchema = Depends(getSelfInfo)):
     '''
     修改群名
     :param group: 群号
@@ -320,7 +302,7 @@ def modifyGroupName(group: str, newName: str, user: UserSchema = Depends(getUser
 
 
 @groupRouter.post('/modifyGroupAvatar')
-def modifyGroupAvatar(group: str, newAvatar: Avatar, user: UserSchema = Depends(getUserInfo)):
+def modifyGroupAvatar(group: str, newAvatar: Avatar, user: UserSchema = Depends(getSelfInfo)):
     '''
     修改群头像
     :param group: 群号
@@ -376,7 +358,7 @@ def getMembersInfo(group: str):
 
 
 @groupRouter.post('/joinRequest')
-async def joinRequest(group: str, joinText: str, user: UserSchema = Depends(getUserInfo)):
+async def joinRequest(group: str, joinText: str, user: UserSchema = Depends(getSelfInfo)):
     '''
     入群申请
     :param group: 群号
@@ -437,7 +419,7 @@ async def joinRequest(group: str, joinText: str, user: UserSchema = Depends(getU
 
 
 @groupRouter.get('/queryJoinRequest')
-async def queryJoinRequest(group: str, user: UserSchema = Depends(getUserInfo)):
+async def queryJoinRequest(group: str, user: UserSchema = Depends(getSelfInfo)):
     '''
     获取群验证消息，需要权限
     :param group: 群号
@@ -445,7 +427,7 @@ async def queryJoinRequest(group: str, user: UserSchema = Depends(getUserInfo)):
     '''
     groupInfo = Collection.COLL_GRP.value.query(
         {"group": group},
-        {"_id": 1, "lastUpdate" : 1,"question": 1, "owner": 1, "admin": 1}
+        {"_id": 1, "lastUpdate": 1, "question": 1, "owner": 1, "admin": 1}
     )
 
     if not groupInfo:
@@ -474,8 +456,94 @@ async def queryJoinRequest(group: str, user: UserSchema = Depends(getUserInfo)):
         await SCM.sending(user["uuid"], dict(sysMessage))
 
 
+@groupRouter.post('/requestResponse')
+async def requestResponse(group: str, time: str, verdict: bool, user: UserSchema = Depends(getSelfInfo)):
+    '''
+    验证群验证消息，需要管理员权限
+    :param group: 群号
+    :param time: 群验证发出时的时间
+    :param verdict: True通过 False不通过
+    :param user: 用户信息
+    '''
+    groupInfo = Collection.COLL_GRP.value.query(
+        {"group": group},
+        {"_id": 1, "name": 1, "question": 1, "owner": 1, "admin": 1}
+    )
+
+    if not groupInfo:
+        raise HTTPException(status_code=400, detail="群不存在")
+    if user["_id"] != groupInfo["owner"] and user["_id"] not in groupInfo["admin"]:
+        raise HTTPException(status_code=403, detail="仅群主/管理员可以操作")
+    if int(time) < int(timestamp()) - Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000 * 1000:
+        raise HTTPException(status_code=400, detail="请求已过期")
+
+    reqCollection = DB_CRUD(Database.ReqDB.value, group)
+    requestInfo = reqCollection.query(
+        {"time": time},
+        {"_id": 0}
+    )
+
+    if not requestInfo:
+        raise HTTPException(status_code=400, detail="该请求不存在")
+    if requestInfo["state"] != RequestState.PENDING.value:
+        raise HTTPException(status_code=403, detail="已被群主或其他管理员同意/拒绝")
+
+    if verdict:
+        currentState = (RequestState.ACCEPTED_BY_OWNER.value
+                        if user["_id"] == groupInfo["owner"]
+                        else RequestState.ACCEPTED_BY_ADMIN.value)
+
+        # Collection.COLL_GRP.value.update(
+        #     {"group": group},
+        #     {"$push": {"user": user["_id"]}}
+        # )
+        # Collection.COLL_ACC.value.update(
+        #     {"uuid": user["uuid"]},
+        #     {"$push": {"groups": groupInfo["_id"]}}
+        # )
+
+        if requestInfo["senderID"] in SCM:
+            sysMessage = SysMessageSchema(
+                time=timestamp(),
+                type="joined",
+                group=group,
+                state=currentState,
+                payload=groupInfo["name"]
+            )
+            await SCM.sending(requestInfo["senderID"], dict(sysMessage))
+
+    else:
+        currentState = (RequestState.REJECTED_BY_OWNER.value
+                        if user["_id"] == groupInfo["owner"]
+                        else RequestState.REJECTED_BY_ADMIN.value)
+
+    # reqCollection.update(
+    #     {"time": time},
+    #     {"$set": {"state": currentState}}
+    # )
+
+    sysMessage = SysMessageSchema(
+        time=requestInfo["time"],
+        type=requestInfo["type"],
+        group=group,
+        groupKey=requestInfo["groupKey"],
+        state=currentState,
+        senderID=requestInfo["senderID"],
+        senderKey=requestInfo["senderKey"],
+        payload=requestInfo["payload"]
+    )
+
+    admins = groupInfo["admin"] + [groupInfo["owner"]]
+    for objID in admins:
+        info = objID2info(objID)
+        if info["uuid"] in SCM:
+            await SCM.sending(info["uuid"], dict(sysMessage))
+
+    return {"state": 1}
+
+
 @groupRouter.post('/invite')
-def inviteRequest(targetGroup: str, user: UserSchema = Depends(getUserInfo)):
+def inviteRequest(targetGroup: str, user: UserSchema = Depends(getSelfInfo)):
     '''
     入群邀请
     :param targetGroup: 目标群号
@@ -500,6 +568,6 @@ def inviteRequest(targetGroup: str, user: UserSchema = Depends(getUserInfo)):
 
 
 @groupRouter.post('/friendRequest')
-def friendRequest(targetUser: str, user: UserSchema = Depends(getUserInfo)):
+def friendRequest(targetUser: str, user: UserSchema = Depends(getSelfInfo)):
     # 个人profile下发起
     pass
