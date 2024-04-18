@@ -11,7 +11,7 @@ class GroupConnectionManager:
 
     def addConnectedGroup(self, groupID):
         if groupID not in self.online:
-            exist = Collection.COLL_GRP.value.query(
+            exist = Collection.GROUP.value.query(
                 {"group": groupID},
                 {"_id": 1}
             )
@@ -41,7 +41,7 @@ class GroupConnections:
     async def connect(self, websocket, userID):
         await websocket.accept()
 
-        lastSeen = Collection.COLL_ACC.value.query(
+        lastSeen = Collection.ACCOUNT.value.query(
             {"uuid": userID},
             {"lastSeen": 1}
         )["lastSeen"]
@@ -65,7 +65,7 @@ class GroupConnections:
         self._connections[userID] = websocket
 
     def disconnect(self, userID):
-        Collection.COLL_ACC.value.update(
+        Collection.ACCOUNT.value.update(
             {"uuid": userID},
             {"$set": {"lastSeen": timestamp()}},
         )
@@ -83,7 +83,7 @@ class GroupConnections:
             await SCM.sending(userID, sysMsg)
             return
 
-        userInfo = Collection.COLL_ACC.value.query(
+        userInfo = Collection.ACCOUNT.value.query(
             {"uuid": message.senderID},
             {"_id": 0, "lastUpdate": 1}
         )

@@ -2,7 +2,7 @@ from uuid import uuid4
 from datetime import datetime, timedelta
 
 from const import API, Auth, Collection, Miscellaneous
-from depend.depends import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
+from depend.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
 from utils.helper import hashPassword, timestamp
 from utils.wsConnectionMgr import SCM
 from utils.createAccessToken import createAccessToken
@@ -39,9 +39,11 @@ def register(registerInfo: Register):
         groups=[],
     )
 
-    Collection.COLL_ACC.value.add(dict(userInfo))
+    Collection.ACCOUNT.value.add(dict(userInfo))
 
-    return {"uuid": userID}
+    info = {"uuid": userID}
+
+    return info
 
 
 @loginRouter.post('/token')
@@ -52,7 +54,7 @@ def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = False):
     :param isBot: 以Bot身份登录
     :return: JWT Token
     '''
-    userInfo = Collection.COLL_ACC.value.query(
+    userInfo = Collection.ACCOUNT.value.query(
         {"uuid": formData.username},
         {"password": 1}
     )
@@ -87,23 +89,21 @@ def check(newToken=Depends(checker)):
 
 
 @loginRouter.get('/profile/me')
-def profile(user: UserSchema = Depends(getSelfInfo)):
+def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     获取自己的信息，不包括avatar和password，avatar通过GET profile/{uuid}获取
     '''
-    groupInfoList = []
-    for groupObjID in user.groups:
-        groupInfo = Collection.COLL_GRP.value.query(
+    for index, groupObjID in enumerate(userInfo.groups):
+        groupInfo = Collection.GROUP.value.query(
             {"_id": groupObjID},
             {"_id": 0, "group": 1, "lastUpdate": 1}
         )
-        groupInfoList.append(groupInfo)
-    user.groups = groupInfoList
+        userInfo.groups[index] = groupInfo
 
-    ret = dict(user)
-    del ret["id"]
+    info = dict(userInfo)
+    del info["id"]
 
-    return ret
+    return info
 
 
 @loginRouter.get('/profile/{uuid}')
@@ -119,7 +119,7 @@ def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
         "lastUpdate": userInfo.lastUpdate,
     }
 
-    return dict(UserSchema.parse_obj(info))
+    return info
 
 
 @loginRouter.get('/current/{uuid}')
@@ -137,4 +137,4 @@ def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
         "lastSeen": userCurrentInfo.lastSeen,
     }
 
-    return dict(UserSchema.parse_obj(info))
+    return info

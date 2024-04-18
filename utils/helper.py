@@ -13,8 +13,8 @@ def timestamp():
     return ("{:.6f}".format(datetime.now().timestamp())).replace(".", "")
 
 
-def objID2info(objID):
-    info = Collection.COLL_ACC.value.query(
+def convertObjectIDtoInfo(objID):
+    info = Collection.ACCOUNT.value.query(
         {"_id": objID},
         {"_id": 0, "uuid": 1, "lastUpdate": 1}
     )
@@ -35,17 +35,17 @@ def beforeSendCheck(userID, groupID, message):
         if not getMessage:
             return "Message is expired"
 
-        userObjID = Collection.COLL_ACC.value.query(
+        userObjID = Collection.ACCOUNT.value.query(
             {"uuid": userID},
             {"_id": 1}
         )["_id"]
 
-        targetObjID = Collection.COLL_ACC.value.query(
+        targetObjID = Collection.ACCOUNT.value.query(
             {"uuid": getMessage["senderID"]},
             {"_id": 1}
         )["_id"]
 
-        targetGroup = Collection.COLL_GRP.value.query(
+        targetGroup = Collection.GROUP.value.query(
             {"group": groupID},
             {"owner": 1, "admin": 1}
         )

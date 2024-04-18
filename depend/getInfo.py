@@ -17,13 +17,13 @@ def getGroupInfo(group: str = Path(...)):
     :param group: 群ID 从路径中获取
     :return: 包含除了avatar的群信息
     '''
-    groupInfo = Collection.COLL_GRP.value.query(
+    groupInfo = Collection.GROUP.value.query(
         {"group": group},
         {"avatar": 0}
     )
 
     if not groupInfo:
-        return None
+        raise HTTPException(status_code=400, detail="群不存在")
 
     return GroupSchema.parse_obj(groupInfo)
 
@@ -32,10 +32,7 @@ def getGroupInfoWithAvatar(group: str = Path(...), others: GroupSchema = Depends
     '''
     在getGroupInfo的基础上加上avatar
     '''
-    if not others:
-        return None
-
-    avatar = Collection.COLL_GRP.value.query(
+    avatar = Collection.GROUP.value.query(
         {"group": group},
         {"avatar": 1}
     )
@@ -50,13 +47,13 @@ def getUserInfo(uuid: str = Path(...)):
     :param uuid: 用户uuid 从路径中获取
     :return: 包含除了password, avatar的用户信息
     '''
-    userInfo = Collection.COLL_ACC.value.query(
+    userInfo = Collection.ACCOUNT.value.query(
         {"uuid": uuid},
         {"password": 0, "avatar": 0},
     )
 
     if not userInfo:
-        return None
+        raise HTTPException(status_code=400, detail="用户不存在")
 
     return UserSchema.parse_obj(userInfo)
 
@@ -68,7 +65,7 @@ def getUserInfoWithAvatar(uuid: str = Path(...), others: UserSchema = Depends(ge
     if not others:
         return None
 
-    avatar = Collection.COLL_ACC.value.query(
+    avatar = Collection.ACCOUNT.value.query(
         {"uuid": uuid},
         {"avatar": 1},
     )
@@ -88,7 +85,7 @@ def getSelfInfo(token: str = Depends(Auth.OAUTH2.value)):
     except JWTError as e:
         raise HTTPException(status_code=401, detail="token无效")
 
-    selfInfo = Collection.COLL_ACC.value.query(
+    selfInfo = Collection.ACCOUNT.value.query(
         {"uuid": payload["uuid"]},
         {"password": 0, "avatar": 0},
     )

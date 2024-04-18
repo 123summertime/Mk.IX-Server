@@ -14,23 +14,20 @@ class Database(Enum):
     StorageDB = "Storage"
     ReqDB = "Requset"
 
-    ACC = "Account"
-    GRP = "Group"
-
 
 class Collection(Enum):
-    COLL_ACC = DB_CRUD(Database.UserDB.value, Database.ACC.value)
-    COLL_GRP = DB_CRUD(Database.UserDB.value, Database.GRP.value)
+    ACCOUNT = DB_CRUD(Database.UserDB.value, "Account")
+    GROUP = DB_CRUD(Database.UserDB.value, "Group")
 
 
 class Auth(Enum):
     ALGORITHM = "HS256"
     SECRET_KEY = "hw4jf6uz8o4na1rc3pf9yxr8fn3gft3m"
     ACCESS_TOKEN_EXPIRE_MINUTES = 2160
-    OAUTH2 = OAuth2PasswordBearer(tokenUrl="/v1/user/token")
+    OAUTH2 = OAuth2PasswordBearer(tokenUrl=f"/{API.version.value}/user/token")
 
 
-# 0等待审核 1群主已同意 2群主已拒绝 3管理员已同意 4管理员已拒绝 5用户已同意 6用户已拒绝
+# 请求状态 0等待审核 1群主已同意 2群主已拒绝 3管理员已同意 4管理员已拒绝 5用户已同意 6用户已拒绝
 class RequestState(Enum):
     PENDING = 0
     ACCEPTED_BY_OWNER = 1
@@ -39,6 +36,14 @@ class RequestState(Enum):
     REJECTED_BY_ADMIN = 4
     ACCEPTED_BY_USER = 5
     REJECTED_BY_USER = 6
+
+
+# 权限等级 0任何人 1群员及以上 2管理员及以上 3仅群主
+class PermissionLevel(Enum):
+    NONE = 0
+    USER = 1
+    ADMIN = 2
+    OWNER = 3
 
 
 class Miscellaneous(Enum):

@@ -3,7 +3,7 @@ from typing import Dict, List
 from jose import JWTError, jwt
 
 from const import Auth
-from depend.depends import checker
+from depend.getInfo import checker
 from schema.message import GetMessageSchema
 from utils.helper import timestamp
 from utils.wsConnectionMgr import GCM, SCM
