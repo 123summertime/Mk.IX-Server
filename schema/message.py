@@ -1,7 +1,7 @@
 from typing import Any
 from pydantic import BaseModel
 
-from const import RequestState
+from stateCode import RequestState
 
 
 class GetMessageSchema(BaseModel):
@@ -22,12 +22,12 @@ class SendMessageSchema(BaseModel):
 
 
 class SysMessageSchema(BaseModel):
-    time: str
-    type: str
+    time: str = ""
+    type: str = ""
     group: str = ""
     groupKey: str = ""
     state: int = RequestState.PENDING.value
     senderID: str = ""
     senderKey: str = ""
-    payload: str
+    payload: str = ""
 

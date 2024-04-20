@@ -1,6 +1,9 @@
 import hashlib
 from datetime import datetime
 
+from schema.user import UserSchema
+from schema.storage import StorageSchema
+
 from const import Database, Collection
 from utils.dbCRUD import DB_CRUD
 
@@ -13,7 +16,7 @@ def timestamp():
     return ("{:.6f}".format(datetime.now().timestamp())).replace(".", "")
 
 
-def convertObjectIDtoInfo(objID):
+def convertObjectIDtoInfo(objID) -> UserSchema:
     info = Collection.ACCOUNT.value.query(
         {"_id": objID},
         {"_id": 0, "uuid": 1, "lastUpdate": 1}
@@ -26,7 +29,7 @@ def beforeSendCheck(userID, groupID, message):
         return "Failed"
 
     if message.type == "revoke":
-        DB = DB_CRUD(Database.StorageDB.value, groupID)
+        DB = DB_CRUD(Database.StorageDB.value, groupID, StorageSchema)
         getMessage = DB.query(
             {"time": message.payload},
             {"senderID": 1}
@@ -38,12 +41,12 @@ def beforeSendCheck(userID, groupID, message):
         userObjID = Collection.ACCOUNT.value.query(
             {"uuid": userID},
             {"_id": 1}
-        )["_id"]
+        ).id
 
         targetObjID = Collection.ACCOUNT.value.query(
-            {"uuid": getMessage["senderID"]},
+            {"uuid": getMessage.senderID},
             {"_id": 1}
-        )["_id"]
+        ).id
 
         targetGroup = Collection.GROUP.value.query(
             {"group": groupID},
@@ -53,10 +56,10 @@ def beforeSendCheck(userID, groupID, message):
         if not userObjID or not targetGroup:
             return "Invalid user or group"
 
-        isOwner = userObjID == targetGroup["owner"]
-        isAdmin = userObjID in targetGroup["admin"]
+        isOwner = userObjID == targetGroup.owner
+        isAdmin = userObjID in targetGroup.admin
 
-        if userObjID == targetObjID or isOwner or (isAdmin and targetObjID != targetGroup["owner"]):
+        if userObjID == targetObjID or isOwner or (isAdmin and targetObjID != targetGroup.owner):
             return "OK"
         return "No permission"
 

@@ -2,7 +2,6 @@ from datetime import datetime, timedelta
 
 from const import Collection, Auth
 from utils.createAccessToken import createAccessToken
-from schema.payload import GroupID
 from schema.user import UserSchema
 from schema.group import GroupSchema
 
@@ -11,7 +10,7 @@ from fastapi import HTTPException, Depends, Path
 from fastapi.security import OAuth2PasswordBearer
 
 
-def getGroupInfo(group: str = Path(...)):
+def getGroupInfo(group: str = Path(...)) -> GroupSchema:
     '''
     从数据库中获取群的信息
     :param group: 群ID 从路径中获取
@@ -25,10 +24,11 @@ def getGroupInfo(group: str = Path(...)):
     if not groupInfo:
         raise HTTPException(status_code=400, detail="群不存在")
 
-    return GroupSchema.parse_obj(groupInfo)
+    return groupInfo
 
 
-def getGroupInfoWithAvatar(group: str = Path(...), others: GroupSchema = Depends(getGroupInfo)):
+def getGroupInfoWithAvatar(group: str = Path(...),
+                           others: GroupSchema = Depends(getGroupInfo)) -> GroupSchema:
     '''
     在getGroupInfo的基础上加上avatar
     '''
@@ -36,12 +36,12 @@ def getGroupInfoWithAvatar(group: str = Path(...), others: GroupSchema = Depends
         {"group": group},
         {"avatar": 1}
     )
-    others.avatar = avatar["avatar"]
+    others.avatar = avatar.avatar
 
     return others
 
 
-def getUserInfo(uuid: str = Path(...)):
+def getUserInfo(uuid: str = Path(...)) -> UserSchema:
     '''
     从数据库中获取用户的信息
     :param uuid: 用户uuid 从路径中获取
@@ -55,26 +55,24 @@ def getUserInfo(uuid: str = Path(...)):
     if not userInfo:
         raise HTTPException(status_code=400, detail="用户不存在")
 
-    return UserSchema.parse_obj(userInfo)
+    return userInfo
 
 
-def getUserInfoWithAvatar(uuid: str = Path(...), others: UserSchema = Depends(getUserInfo)):
+def getUserInfoWithAvatar(uuid: str = Path(...),
+                          others: UserSchema = Depends(getUserInfo)) -> UserSchema:
     '''
     在getUserInfo的基础上加上avatar
     '''
-    if not others:
-        return None
-
     avatar = Collection.ACCOUNT.value.query(
         {"uuid": uuid},
         {"avatar": 1},
     )
-    others.avatar = avatar["avatar"]
+    others.avatar = avatar.avatar
 
     return others
 
 
-def getSelfInfo(token: str = Depends(Auth.OAUTH2.value)):
+def getSelfInfo(token: str = Depends(Auth.OAUTH2.value)) -> UserSchema:
     '''
     验证通过后从数据库中获取用户信息，token必须有效
     :param token: JWT Token
@@ -90,7 +88,7 @@ def getSelfInfo(token: str = Depends(Auth.OAUTH2.value)):
         {"password": 0, "avatar": 0},
     )
 
-    return UserSchema.parse_obj(selfInfo)
+    return selfInfo
 
 
 def checker(token: str = Depends(Auth.OAUTH2.value)):

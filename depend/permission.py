@@ -1,4 +1,4 @@
-from const import PermissionLevel
+from stateCode import PermissionLevel
 from schema.user import UserSchema
 from schema.group import GroupSchema
 from schema.payload import Info
@@ -8,6 +8,9 @@ from fastapi import HTTPException, Depends, Path
 
 
 class checkPermission:
+    '''
+    在有权限的情况下，返回群信息及自己的信息
+    '''
     def __init__(self, level):
         self.level = level
 

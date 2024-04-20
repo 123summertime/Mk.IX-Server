@@ -32,7 +32,7 @@ class GroupConnections:
     def __init__(self, groupID):
         self.groupID = groupID
         self._connections = dict() # item -> {userID: wsConnection}
-        self._currentGroupCollection = DB_CRUD(Database.StorageDB.value, self.groupID)
+        self._currentGroupCollection = DB_CRUD(Database.StorageDB.value, self.groupID, StorageSchema)
 
     def __repr__(self):
         return f"{self.groupID}:\n" \
@@ -44,22 +44,21 @@ class GroupConnections:
         lastSeen = Collection.ACCOUNT.value.query(
             {"uuid": userID},
             {"lastSeen": 1}
-        )["lastSeen"]
+        ).lastSeen
 
-        messages = self._currentGroupCollection.query(
+        messages = self._currentGroupCollection.queryMany(
             {"time": {"$gt": lastSeen}},
             {"_id": 0},
-            True
         )
 
         for msg in messages:
             await websocket.send_json(dict(SendMessageSchema(
-                time=msg["time"],
-                type=msg["type"],
+                time=msg.time,
+                type=msg.type,
                 group=self.groupID,
-                senderID=msg["senderID"],
-                senderKey=msg["senderKey"],
-                payload=msg["payload"],
+                senderID=msg.senderID,
+                senderKey=msg.senderKey,
+                payload=msg.payload,
             )))
 
         self._connections[userID] = websocket
@@ -92,7 +91,7 @@ class GroupConnections:
             time=message.time,
             type=message.type,
             senderID=message.senderID,
-            senderKey=userInfo["lastUpdate"],
+            senderKey=userInfo.lastUpdate,
             payload=message.payload,
         )))
 
@@ -101,7 +100,7 @@ class GroupConnections:
             type=message.type,
             group=self.groupID,
             senderID=message.senderID,
-            senderKey=userInfo["lastUpdate"],
+            senderKey=userInfo.lastUpdate,
             payload=message.payload,
         )
 

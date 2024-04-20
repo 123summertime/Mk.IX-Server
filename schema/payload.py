@@ -16,16 +16,16 @@ class Info(BaseModel):
     userInfo: UserSchema
 
 
-class GroupID(BaseModel):
-    group: str
-
-
-class Name(BaseModel):
-    name: str
-
-
-class Avatar(BaseModel):
-    avatar: str
+# class GroupID(BaseModel):
+#     group: str
+#
+#
+# class Name(BaseModel):
+#     name: str
+#
+#
+# class Avatar(BaseModel):
+#     avatar: str
 
 
 class Note(BaseModel):

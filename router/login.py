@@ -21,8 +21,6 @@ loginRouter = APIRouter(prefix=f"/{API.version.value}/user", tags=['Login'])
 def register(registerInfo: Register):
     '''
     用户注册
-    :param registerInfo: 用户名 + 密码
-    :return: 创建的用户的uuid
     '''
     userName, password = registerInfo.userName, registerInfo.password
     hashedPassword = hashPassword(password)
@@ -49,10 +47,8 @@ def register(registerInfo: Register):
 @loginRouter.post('/token')
 def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = False):
     '''
-    表单验证
-    :param formData: 表单
-    :param isBot: 以Bot身份登录
-    :return: JWT Token
+    登录表单验证
+    formData: 表单
     '''
     userInfo = Collection.ACCOUNT.value.query(
         {"uuid": formData.username},
@@ -60,12 +56,11 @@ def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = False):
     )
 
     if not userInfo:
-        raise HTTPException(status_code=401, detail="用户名或密码不正确")
+        raise HTTPException(status_code=400, detail="用户不存在")
 
     hashedPassword = hashPassword(formData.password)
-
-    if hashedPassword != userInfo["password"]:
-        raise HTTPException(status_code=401, detail="用户名或密码不正确")
+    if hashedPassword != userInfo.password:
+        raise HTTPException(status_code=401, detail="密码不正确")
 
     accessTokenExpires = timedelta(minutes=Auth.ACCESS_TOKEN_EXPIRE_MINUTES.value)
     token = createAccessToken(
@@ -91,14 +86,15 @@ def check(newToken=Depends(checker)):
 @loginRouter.get('/profile/me')
 def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     '''
-    获取自己的信息，不包括avatar和password，avatar通过GET profile/{uuid}获取
+    获取自己的信息 需要登录
+    不包括avatar和password  avatar通过GET profile/{uuid}获取
     '''
     for index, groupObjID in enumerate(userInfo.groups):
         groupInfo = Collection.GROUP.value.query(
             {"_id": groupObjID},
             {"_id": 0, "group": 1, "lastUpdate": 1}
         )
-        userInfo.groups[index] = groupInfo
+        userInfo.groups[index] = dict(groupInfo)
 
     info = dict(userInfo)
     del info["id"]

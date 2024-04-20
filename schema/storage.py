@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from const import RequestState
+from stateCode import RequestState
 
 
 class StorageSchema(BaseModel):
@@ -12,11 +12,11 @@ class StorageSchema(BaseModel):
 
 
 class RequestMsgSchema(BaseModel):
-    time: str
-    type: str
-    group: str
-    groupKey: str
+    time: str = ""
+    type: str = ""
+    group: str = ""
+    groupKey: str = ""
     state: int = RequestState.PENDING.value
-    senderID: str
-    senderKey: str
-    payload: str
+    senderID: str = ""
+    senderKey: str = ""
+    payload: str = ""
