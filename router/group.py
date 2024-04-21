@@ -22,7 +22,7 @@ from fastapi.security import OAuth2PasswordBearer
 groupRouter = APIRouter(prefix=f"/{API.version.value}/group", tags=['Group'])
 
 
-@groupRouter.post("/")
+@groupRouter.post("/register")
 def makeGroup(registerInfo: GroupRegister,
               userInfo: UserSchema = Depends(getSelfInfo)):
     '''
@@ -61,21 +61,6 @@ def makeGroup(registerInfo: GroupRegister,
     return {"groupID": groupID}
 
 
-# getGroupInfo
-@groupRouter.get('/{group}')
-def getInfo(groupInfo: GroupSchema = Depends(getGroupInfoWithAvatar)):
-    '''
-    获取群信息
-    '''
-    info = {
-        "name": groupInfo.name,
-        "avatar": groupInfo.avatar,
-        "lastUpdate": groupInfo.lastUpdate
-    }
-
-    return info
-
-
 @groupRouter.delete('/{group}')
 def deleteGroup(info: Info = Depends(OwnerPermission)):
     '''
@@ -93,10 +78,22 @@ def deleteGroup(info: Info = Depends(OwnerPermission)):
     )
     GCM.removeGroup(groupInfo.group)
 
-    return {"state": 1}
+    return {"detail": "ok"}
 
 
-@groupRouter.delete("/{group}/me")
+@groupRouter.get('/{group}/members')
+def getMembersInfo(info: Info = Depends(UserPermission)):
+    '''
+    获取群成员信息 群员权限
+    '''
+    groupInfo, _ = info.groupInfo, info.userInfo
+
+    membersInfo = [dict(convertObjectIDtoInfo(i)) for i in groupInfo.user]
+
+    return {"users": membersInfo}
+
+
+@groupRouter.delete("/{group}/members/me")
 def deleteSelf(info: Info = Depends(UserPermission)):
     '''
     退出群 群员可用 群主除外
@@ -121,10 +118,10 @@ def deleteSelf(info: Info = Depends(UserPermission)):
     )
     GCM.removeSomeoneInGroup(groupInfo.group, userInfo.uuid)
 
-    return {"state": 1}
+    return {"detail": "ok"}
 
 
-@groupRouter.delete("/{group}/{target}")
+@groupRouter.delete("/{group}/members/{uuid}")
 def deleteUser(info: Info = Depends(AdminPermission),
                targetInfo: UserSchema = Depends(getUserInfo)):
     '''
@@ -147,10 +144,10 @@ def deleteUser(info: Info = Depends(AdminPermission),
     )
     GCM.removeSomeoneInGroup(groupInfo.group, userInfo.uuid)
 
-    return {"state": 1}
+    return {"detail": "ok"}
 
 
-@groupRouter.get('/{group}/admin')
+@groupRouter.get('/{group}/members/admin')
 def getAdminInfo(groupInfo: GroupSchema = Depends(getGroupInfo)):
     '''
     获取群主+管理员信息 无需权限
@@ -163,7 +160,7 @@ def getAdminInfo(groupInfo: GroupSchema = Depends(getGroupInfo)):
     return info
 
 
-@groupRouter.patch("/{group}/admin/{target}")
+@groupRouter.patch("/{group}/members/admin/{uuid}")
 def admin(operation: bool,
           info: Info = Depends(OwnerPermission),
           targetInfo: UserSchema = Depends(getUserInfo)):
@@ -193,53 +190,25 @@ def admin(operation: bool,
             {"$pull": {"admin": targetInfo.id}}
         )
 
-    return {"state": 1}
+    return {"detail": "ok"}
 
 
-@groupRouter.get("/{group}/join")
-def joinQuestion(info: Info = Depends(NonePermission)):
+# getGroupInfo
+@groupRouter.get('/{group}/info')
+def getInfo(groupInfo: GroupSchema = Depends(getGroupInfoWithAvatar)):
     '''
-    获取入群问题 无权限
+    获取群信息
     '''
-    groupInfo, userInfo = info.groupInfo, info.userInfo
-
-    if groupInfo.id in userInfo.groups:
-        raise HTTPException(status_code=400, detail="已经加入了")
-
     info = {
         "name": groupInfo.name,
-        "question": list(groupInfo.question.keys())[0]
+        "avatar": groupInfo.avatar,
+        "lastUpdate": groupInfo.lastUpdate
     }
 
     return info
 
 
-@groupRouter.post("/{group}/join")
-def join(answer: GroupQA,
-         info: Info = Depends(NonePermission)):
-    '''
-    通过回答问题加入群聊 无权限
-    '''
-    groupInfo, userInfo = info.groupInfo, info.userInfo
-
-    if groupInfo.id in userInfo.groups:
-        raise HTTPException(status_code=400, detail="已经加入了")
-    if answer.A != list(groupInfo.question.values())[0]:
-        raise HTTPException(status_code=400, detail="答案错误")
-
-    Collection.GROUP.value.update(
-        {"group": groupInfo.group},
-        {"$push": {"user": userInfo.id}}
-    )
-    Collection.ACCOUNT.value.update(
-        {"uuid": userInfo.uuid},
-        {"$push": {"groups": groupInfo.id}}
-    )
-
-    return {"state": 1}
-
-
-@groupRouter.patch('/{group}/name')
+@groupRouter.patch('/{group}/info/name')
 def modifyGroupName(newName: Note,
                     info: Info = Depends(AdminPermission)):
     '''
@@ -256,10 +225,10 @@ def modifyGroupName(newName: Note,
         {"$set": {"name": newName.note, "lastUpdate": timestamp()}}
     )
 
-    return {"state": 1}
+    return {"detail": "ok"}
 
 
-@groupRouter.patch('/{group}/avatar')
+@groupRouter.patch('/{group}/info/avatar')
 def modifyGroupAvatar(newAvatar: Note,
                       info: Info = Depends(AdminPermission)):
     '''
@@ -283,22 +252,53 @@ def modifyGroupAvatar(newAvatar: Note,
         {"$set": {"avatar": avatar, "lastUpdate": timestamp()}}
     )
 
-    return {"state": 1}
+    return {"detail": "ok"}
 
 
-@groupRouter.get('/{group}/user')
-def getMembersInfo(info: Info = Depends(UserPermission)):
+@groupRouter.get("/{group}/verify/question")
+def joinQuestion(info: Info = Depends(NonePermission)):
     '''
-    获取群成员信息 群员权限
+    获取入群问题 无权限
     '''
-    groupInfo, _ = info.groupInfo, info.userInfo
+    groupInfo, userInfo = info.groupInfo, info.userInfo
 
-    membersInfo = [dict(convertObjectIDtoInfo(i)) for i in groupInfo.user]
+    if groupInfo.id in userInfo.groups:
+        raise HTTPException(status_code=400, detail="已经加入了")
 
-    return {"users": membersInfo}
+    info = {
+        "name": groupInfo.name,
+        "question": list(groupInfo.question.keys())[0]
+    }
+
+    return info
 
 
-@groupRouter.post('/{group}/request')
+@groupRouter.post("/{group}/verify/answer")
+def join(answer: GroupQA,
+         info: Info = Depends(NonePermission)):
+    '''
+    通过回答问题加入群聊 无权限
+    '''
+    groupInfo, userInfo = info.groupInfo, info.userInfo
+
+    if groupInfo.id in userInfo.groups:
+        raise HTTPException(status_code=400, detail="已经加入了")
+    if answer.A != list(groupInfo.question.values())[0]:
+        raise HTTPException(status_code=400, detail="答案错误")
+
+    Collection.GROUP.value.update(
+        {"group": groupInfo.group},
+        {"$push": {"user": userInfo.id}}
+    )
+    Collection.ACCOUNT.value.update(
+        {"uuid": userInfo.uuid},
+        {"$push": {"groups": groupInfo.id}}
+    )
+
+    return {"detail": "ok"}
+
+
+@groupRouter.post('/{group}/verify/request')
 async def joinRequest(joinText: Note,
                       info: Info = Depends(NonePermission)):
     '''
@@ -317,11 +317,9 @@ async def joinRequest(joinText: Note,
         {"time": 1, "state": 1}
     )
 
-    if not requestExist:
-        raise HTTPException(status_code=400, detail="申请不存在")
-
-    if requestExist and requestExist.state == 0 and int(timestamp()[:10]) - int(requestExist.time[:10]) \
-            < int(Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60):
+    # 时间单位: ms
+    if requestExist and requestExist.state == 0 and int(timestamp()) - int(requestExist.time) < \
+            int(Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
         raise HTTPException(status_code=400, detail="申请中，等待审核")
 
     sysMessage = SysMessageSchema(
@@ -351,10 +349,10 @@ async def joinRequest(joinText: Note,
         if info.uuid in SCM:
             await SCM.sending(info.uuid, dict(sysMessage))
 
-    return {"state": 1}
+    return {"detail": "ok"}
 
 
-@groupRouter.get('/{group}/request')
+@groupRouter.get('/{group}/verify/request')
 async def queryJoinRequest(info: Info = Depends(AdminPermission)):
     '''
     获取群验证消息 管理员权限
@@ -363,8 +361,8 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
     groupInfo, userInfo = info.groupInfo, info.userInfo
 
     reqCollection = DB_CRUD(Database.ReqDB.value, groupInfo.group, RequestMsgSchema)
-    messages = reqCollection.queryMany(  # 获取在有效时间内的请求
-        {"time": {"$gt": str(int(timestamp()) - Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000 * 1000)}},
+    messages = reqCollection.queryMany(  # 获取在有效时间内的请求 单位:ms
+        {"time": {"$gt": str(int(timestamp()) - Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
         {"_id": 0}
     )
 
@@ -384,19 +382,20 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
             await SCM.sending(userInfo.uuid, dict(sysMessage))
 
 
-@groupRouter.post('/{group}/response')
+@groupRouter.post('/{group}/verify/response')
 async def requestResponse(verdict: bool,
                           time: Note,
                           info: Info = Depends(AdminPermission)):
     '''
     验证群验证消息，管理员权限
-    verdict: True通过 False不通过
+    :param verdict: True通过 False不通过
     '''
     time = time.note
     groupInfo, userInfo = info.groupInfo, info.userInfo
     admins = groupInfo.admin + [groupInfo.owner]
 
-    if int(time) < int(timestamp()) - Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000 * 1000:
+    # 时间单位: ms
+    if int(time) < int(timestamp()) - Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000:
         raise HTTPException(status_code=400, detail="请求已过期")
 
     reqCollection = DB_CRUD(Database.ReqDB.value, groupInfo.group, RequestMsgSchema)
@@ -460,7 +459,7 @@ async def requestResponse(verdict: bool,
         if info.uuid in SCM:
             await SCM.sending(info.uuid, dict(sysMessage))
 
-    return {"state": 1}
+    return {"detail": "ok"}
 
 
 @groupRouter.post('/invite')

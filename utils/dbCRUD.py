@@ -32,8 +32,14 @@ class DB_CRUD():
     def update(self, qkv, ukv):
         return self._collection.update_one(qkv, ukv)
 
-    def query(self, kv, ignore={}) -> Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema]:
-        return self.schema.parse_obj(self._collection.find_one(kv, ignore))
+    def query(self, kv, ignore={}) -> Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, None]:
+        info = self._collection.find_one(kv, ignore)
+        if not info:
+            return None
+        return self.schema.parse_obj(info)
 
-    def queryMany(self, kv, ignore) -> List[Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema]]:
-        return [self.schema.parse_obj(i) for i in self._collection.find(kv, ignore)]
+    def queryMany(self, kv, ignore) -> List[Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema]] | None:
+        info = self._collection.find(kv, ignore)
+        if not info:
+            return None
+        return [self.schema.parse_obj(i) for i in info]

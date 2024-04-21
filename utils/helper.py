@@ -13,7 +13,7 @@ def hashPassword(password):
 
 
 def timestamp():
-    return ("{:.6f}".format(datetime.now().timestamp())).replace(".", "")
+    return ("{:.3f}".format(datetime.now().timestamp())).replace(".", "")
 
 
 def convertObjectIDtoInfo(objID) -> UserSchema:

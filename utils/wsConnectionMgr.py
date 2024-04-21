@@ -38,8 +38,8 @@ class GroupConnections:
         return f"{self.groupID}:\n" \
                f"Online Users {self._connections}\n"
 
-    async def connect(self, websocket, userID):
-        await websocket.accept()
+    async def connect(self, websocket, userID, subprotocol):
+        await websocket.accept(subprotocol=subprotocol)
 
         lastSeen = Collection.ACCOUNT.value.query(
             {"uuid": userID},
@@ -115,8 +115,8 @@ class SystemConnectionManager:
     def __contains__(self, uuid):
         return uuid in self._connections
 
-    async def connect(self, websocket, userID):
-        await websocket.accept()
+    async def connect(self, websocket, userID, subprotocol):
+        await websocket.accept(subprotocol=subprotocol)
         self._connections[userID] = websocket
 
     def disconnect(self, userID):

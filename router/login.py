@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 
-loginRouter = APIRouter(prefix=f"/{API.version.value}/user", tags=['Login'])
+loginRouter = APIRouter(prefix=f"/{API.version.value}/user", tags=['User'])
 
 
 @loginRouter.post('/register')
@@ -118,7 +118,7 @@ def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
     return info
 
 
-@loginRouter.get('/current/{uuid}')
+@loginRouter.get('/profile/current/{uuid}')
 def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
     '''
     获取用户当前信息

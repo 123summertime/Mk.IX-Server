@@ -1,33 +1,25 @@
-from uuid import uuid4
-from typing import Dict, List
-from jose import JWTError, jwt
-
-from const import Auth
-from depend.getInfo import checker
+from depend.getInfo import getSelfInfo
 from schema.message import GetMessageSchema
 from utils.helper import timestamp
 from utils.wsConnectionMgr import GCM, SCM
 
-from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, WebSocketException, Depends
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Header
 
-wsRouter = APIRouter(tags=['websockets'])
+wsRouter = APIRouter(prefix="/ws", tags=['Websockets'])
 
 
 @wsRouter.websocket("/ws")
-async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, token: str):
-    # try:
-    #     payload = jwt.decode(token, Auth.SECRET_KEY.value, algorithms=Auth.ALGORITHM.value)
-    # except JWTError:
-    #     raise WebSocketException(code=4003, reason="Invalid credentials")
-    # if payload["uuid"] != userID:
-    #     raise WebSocketException(code=4003, reason="Invalid credentials")
+async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Sec_Websocket_Protocol=Header(None)):
+    Authorization = Sec_Websocket_Protocol  # 你以为是subprotocol? 其实是我Authorization哒
 
-    # TODO: 检查是否在群中
+    try:
+        getSelfInfo(Authorization)
+    except HTTPException as e:
+        raise WebSocketException(code=4003, reason="Invalid credentials")
 
     if groupID not in GCM.online:
         GCM.addConnectedGroup(groupID)
-    await GCM.online[groupID].connect(websocket, userID)
+    await GCM.online[groupID].connect(websocket, userID, Authorization)
 
     try:
         while True:
@@ -48,10 +40,15 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, to
 
 
 @wsRouter.websocket('/wsSys')
-async def SystemMessageSender(websocket: WebSocket, userID: str, token: str):
-    # TODO: 验证
+async def SystemMessageSender(websocket: WebSocket, userID: str, Sec_Websocket_Protocol=Header(None)):
+    Authorization = Sec_Websocket_Protocol
 
-    await SCM.connect(websocket, userID)
+    try:
+        getSelfInfo(Authorization)
+    except HTTPException as e:
+        raise WebSocketException(code=4003, reason="Invalid credentials")
+
+    await SCM.connect(websocket, userID, Authorization)
     try:
         while True:
             await websocket.receive_json()
