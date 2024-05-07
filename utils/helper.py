@@ -1,11 +1,12 @@
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from public.const import Database
-from public.instance import Collection
+from jose import jwt
+
+from public.const import Database, Auth
 from schema.storage import StorageSchema
 from schema.user import UserSchema
-from utils.dbCRUD import DB_CRUD
+from utils.crud import DB_CRUD, ACCOUNT, GROUP
 
 
 def hashPassword(password):
@@ -17,11 +18,24 @@ def timestamp():
 
 
 def convertObjectIDtoInfo(objID) -> UserSchema:
-    info = Collection.ACCOUNT.value.query(
+    info = ACCOUNT.query(
         {"_id": objID},
         {"_id": 0, "uuid": 1, "lastUpdate": 1}
     )
     return info
+
+
+def createAccessToken(data: dict, expiresDelta):
+    encode = data.copy()
+
+    if data["bot"]:
+        encode["exp"] = datetime.utcnow() + timedelta(minutes=Auth.BOT_ACCESS_TOKEN_EXPIRE_MINUTES.value)
+    else:
+        encode["exp"] = datetime.utcnow() + timedelta(minutes=Auth.USER_ACCESS_TOKEN_EXPIRE_MINUTES.value)
+
+    token = jwt.encode(encode, Auth.SECRET_KEY.value, algorithm=Auth.ALGORITHM.value)
+
+    return token
 
 
 def beforeSendCheck(userID, groupID, message):
@@ -38,17 +52,17 @@ def beforeSendCheck(userID, groupID, message):
         if not getMessage:
             return "Message is expired"
 
-        userObjID = Collection.ACCOUNT.value.query(
+        userObjID = ACCOUNT.query(
             {"uuid": userID},
             {"_id": 1}
         ).id
 
-        targetObjID = Collection.ACCOUNT.value.query(
+        targetObjID = ACCOUNT.query(
             {"uuid": getMessage.senderID},
             {"_id": 1}
         ).id
 
-        targetGroup = Collection.GROUP.value.query(
+        targetGroup = GROUP.query(
             {"group": groupID},
             {"owner": 1, "admin": 1}
         )

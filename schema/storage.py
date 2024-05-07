@@ -26,6 +26,3 @@ class RequestMsgSchema(BaseModel):
     senderID: str = ""
     senderKey: str = ""
     payload: str = ""
-
-
-

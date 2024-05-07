@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Header
 
 from depends.getInfo import getSelfInfo
+from utils.wsConnectionMgr import GCM, SCM
 from schema.message import GetMessageSchema
 from utils.helper import timestamp
-from utils.wsConnectionMgr import GCM, SCM
 
 wsRouter = APIRouter(prefix="/ws", tags=['Websockets'])
 
@@ -17,9 +17,7 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Se
     except HTTPException:
         raise WebSocketException(code=4003, reason="Invalid credentials")
 
-    if groupID not in GCM.online:
-        GCM.addConnectedGroup(groupID)
-    await GCM.online[groupID].connect(websocket, userID, Authorization)
+    await GCM.addConnectedUser(groupID, websocket, userID, Authorization)
 
     try:
         while True:
@@ -32,11 +30,11 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Se
                 senderID=userID,
                 payload=message["payload"]
             )
-            await GCM.online[groupID].sending(websocket, userID, getMessage)
+            await GCM.sending(groupID, websocket, userID, getMessage)
 
     except Exception as e:
         print("GCM", groupID, e)
-        GCM.online[groupID].disconnect(userID)
+        GCM.removeUser(groupID, userID)
 
 
 @wsRouter.websocket('/wsSys')

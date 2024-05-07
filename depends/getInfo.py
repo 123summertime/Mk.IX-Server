@@ -4,10 +4,10 @@ from fastapi import HTTPException, Depends, Path
 from jose import JWTError, jwt
 
 from public.const import Auth
-from public.instance import Collection
 from schema.group import GroupSchema
 from schema.user import UserSchema
-from utils.createAccessToken import createAccessToken
+from utils.crud import ACCOUNT, GROUP
+from utils.helper import createAccessToken
 
 
 def getGroupInfo(group: str = Path(...)) -> GroupSchema:
@@ -16,7 +16,7 @@ def getGroupInfo(group: str = Path(...)) -> GroupSchema:
     :param group: 群ID 从路径中获取
     :return: 包含除了avatar的群信息
     '''
-    groupInfo = Collection.GROUP.value.query(
+    groupInfo = GROUP.query(
         {"group": group},
         {"avatar": 0}
     )
@@ -32,7 +32,7 @@ def getGroupInfoWithAvatar(group: str = Path(...),
     '''
     在getGroupInfo的基础上加上avatar
     '''
-    avatar = Collection.GROUP.value.query(
+    avatar = GROUP.query(
         {"group": group},
         {"avatar": 1}
     )
@@ -47,7 +47,7 @@ def getUserInfo(uuid: str = Path(...)) -> UserSchema:
     :param uuid: 用户uuid 从路径中获取
     :return: 包含除了password, avatar的用户信息
     '''
-    userInfo = Collection.ACCOUNT.value.query(
+    userInfo = ACCOUNT.query(
         {"uuid": uuid},
         {"password": 0, "avatar": 0},
     )
@@ -63,7 +63,7 @@ def getUserInfoWithAvatar(uuid: str = Path(...),
     '''
     在getUserInfo的基础上加上avatar
     '''
-    avatar = Collection.ACCOUNT.value.query(
+    avatar = ACCOUNT.query(
         {"uuid": uuid},
         {"avatar": 1},
     )
@@ -83,7 +83,7 @@ def getSelfInfo(token: str = Depends(Auth.OAUTH2.value)) -> UserSchema:
     except JWTError as e:
         raise HTTPException(status_code=401, detail="token无效")
 
-    selfInfo = Collection.ACCOUNT.value.query(
+    selfInfo = ACCOUNT.query(
         {"uuid": payload["uuid"]},
         {"password": 0, "avatar": 0},
     )

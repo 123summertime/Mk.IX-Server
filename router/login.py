@@ -6,12 +6,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from depends.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
 from public.const import API, Auth, Default
-from public.instance import Collection
+from utils.crud import ACCOUNT, GROUP
+from utils.wsConnectionMgr import SCM
 from schema.payload import Register
 from schema.user import UserSchema
-from utils.createAccessToken import createAccessToken
-from utils.helper import hashPassword, timestamp
-from utils.wsConnectionMgr import SCM
+from utils.helper import hashPassword, timestamp, createAccessToken
 
 loginRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
 
@@ -36,7 +35,7 @@ def register(registerInfo: Register):
         groups=[],
     )
 
-    Collection.ACCOUNT.value.add(dict(userInfo))
+    ACCOUNT.add(dict(userInfo))
 
     info = {"uuid": userID}
 
@@ -49,7 +48,7 @@ def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = False):
     登录表单验证
     formData: 表单
     '''
-    userInfo = Collection.ACCOUNT.value.query(
+    userInfo = ACCOUNT.query(
         {"uuid": formData.username},
         {"password": 1}
     )
@@ -89,7 +88,7 @@ def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     不包括avatar和password  avatar通过GET profile/{uuid}获取
     '''
     for index, groupObjID in enumerate(userInfo.groups):
-        groupInfo = Collection.GROUP.value.query(
+        groupInfo = GROUP.query(
             {"_id": groupObjID},
             {"_id": 0, "group": 1, "lastUpdate": 1}
         )

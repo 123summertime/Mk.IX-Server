@@ -13,7 +13,7 @@ client = Database.CLIENT.value
 
 class DB_CRUD():
     def __init__(self, name, collectionName, schema):
-        self.schema = schema
+        self._schema = schema
         try:
             self._collection = client[name][collectionName]
         except Exception:
@@ -38,38 +38,38 @@ class DB_CRUD():
         info = self._collection.find_one(kv, ignore)
         if not info:
             return None
-        return self.schema.parse_obj(info)
+        return self._schema.parse_obj(info)
 
     def queryMany(self, kv, ignore) -> List[Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema]] | None:
         info = self._collection.find(kv, ignore)
         if not info:
             return None
-        return [self.schema.parse_obj(i) for i in info]
+        return [self._schema.parse_obj(i) for i in info]
 
 
 class GridFS_CRUD():
     def __init__(self, name):
-        self.db = client[name]
-        self.fs = GridFS(self.db)
+        self._db = client[name]
+        self._fs = GridFS(self._db)
 
     def add(self, file, filename, contentType, group):
         hashInstance = hashlib.sha256()
         hashInstance.update(file)
         hashValue = hashInstance.hexdigest()
 
-        self.fs.put(file, filename=filename, hash=hashValue, type=contentType)
+        self._fs.put(file, filename=filename, hash=hashValue, type=contentType)
         return hashValue
 
     def delete(self, hashValue):
-        file = self.db.fs.files.find_one(
+        file = self._db.fs.files.find_one(
             {'hash': hashValue}
         )
 
         if file:
-            self.fs.delete(file['_id'])
+            self._fs.delete(file['_id'])
 
     def query(self, hashValue) -> FileStorageSchema | None:
-        file = self.db.fs.files.find_one(
+        file = self._db.fs.files.find_one(
             {'hash': hashValue}
         )
 
@@ -79,9 +79,12 @@ class GridFS_CRUD():
         info = {
             "name": file['filename'],
             "type": file['type'],
-            "file": self.fs.get(file['_id']).read()
+            "file": self._fs.get(file['_id']).read()
         }
 
         return FileStorageSchema.parse_obj(info)
 
 
+ACCOUNT = DB_CRUD(Database.USER_DB.value, "Account", UserSchema)
+GROUP = DB_CRUD(Database.USER_DB.value, "Group", GroupSchema)
+FS = GridFS_CRUD("File")
