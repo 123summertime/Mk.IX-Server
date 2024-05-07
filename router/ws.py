@@ -1,9 +1,9 @@
-from depend.getInfo import getSelfInfo
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Header
+
+from depends.getInfo import getSelfInfo
 from schema.message import GetMessageSchema
 from utils.helper import timestamp
 from utils.wsConnectionMgr import GCM, SCM
-
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Header
 
 wsRouter = APIRouter(prefix="/ws", tags=['Websockets'])
 
@@ -14,7 +14,7 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Se
 
     try:
         getSelfInfo(Authorization)
-    except HTTPException as e:
+    except HTTPException:
         raise WebSocketException(code=4003, reason="Invalid credentials")
 
     if groupID not in GCM.online:

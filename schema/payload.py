@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
-from schema.user import UserSchema
 from schema.group import GroupSchema
+from schema.user import UserSchema
 
 
 # User
@@ -14,18 +14,6 @@ class Register(BaseModel):
 class Info(BaseModel):
     groupInfo: GroupSchema
     userInfo: UserSchema
-
-
-# class GroupID(BaseModel):
-#     group: str
-#
-#
-# class Name(BaseModel):
-#     name: str
-#
-#
-# class Avatar(BaseModel):
-#     avatar: str
 
 
 class Note(BaseModel):

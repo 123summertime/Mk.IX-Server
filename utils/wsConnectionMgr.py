@@ -1,8 +1,9 @@
-from const import Database, Collection
+from public.const import Database
+from public.instance import Collection
+from schema.message import SendMessageSchema, SysMessageSchema
+from schema.storage import StorageSchema
 from utils.dbCRUD import DB_CRUD
 from utils.helper import timestamp, beforeSendCheck
-from schema.storage import StorageSchema
-from schema.message import GetMessageSchema, SendMessageSchema, SysMessageSchema
 
 
 class GroupConnectionManager:
@@ -32,7 +33,7 @@ class GroupConnections:
     def __init__(self, groupID):
         self.groupID = groupID
         self._connections = dict() # item -> {userID: wsConnection}
-        self._currentGroupCollection = DB_CRUD(Database.StorageDB.value, self.groupID, StorageSchema)
+        self._currentGroupCollection = DB_CRUD(Database.STORAGE_DB.value, self.groupID, StorageSchema)
 
     def __repr__(self):
         return f"{self.groupID}:\n" \

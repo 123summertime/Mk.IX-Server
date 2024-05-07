@@ -1,19 +1,21 @@
-from typing import Any, Union, List, Dict
+import hashlib
+from typing import Union, List
 
-from schema.user import UserSchema
+from gridfs import GridFS
+
+from public.const import Database
 from schema.group import GroupSchema
-from schema.storage import StorageSchema, RequestMsgSchema
+from schema.storage import StorageSchema, RequestMsgSchema, FileStorageSchema
+from schema.user import UserSchema
 
-import pymongo
-
-client = pymongo.MongoClient("localhost", 27017, maxPoolSize=50)
+client = Database.CLIENT.value
 
 
 class DB_CRUD():
-    def __init__(self, dbName, collectionName, schema):
+    def __init__(self, name, collectionName, schema):
         self.schema = schema
         try:
-            self._collection = client[dbName][collectionName]
+            self._collection = client[name][collectionName]
         except Exception:
             raise NameError("Invalid DB or collection name")
 
@@ -43,3 +45,43 @@ class DB_CRUD():
         if not info:
             return None
         return [self.schema.parse_obj(i) for i in info]
+
+
+class GridFS_CRUD():
+    def __init__(self, name):
+        self.db = client[name]
+        self.fs = GridFS(self.db)
+
+    def add(self, file, filename, contentType, group):
+        hashInstance = hashlib.sha256()
+        hashInstance.update(file)
+        hashValue = hashInstance.hexdigest()
+
+        self.fs.put(file, filename=filename, hash=hashValue, type=contentType)
+        return hashValue
+
+    def delete(self, hashValue):
+        file = self.db.fs.files.find_one(
+            {'hash': hashValue}
+        )
+
+        if file:
+            self.fs.delete(file['_id'])
+
+    def query(self, hashValue) -> FileStorageSchema | None:
+        file = self.db.fs.files.find_one(
+            {'hash': hashValue}
+        )
+
+        if not file:
+            return None
+
+        info = {
+            "name": file['filename'],
+            "type": file['type'],
+            "file": self.fs.get(file['_id']).read()
+        }
+
+        return FileStorageSchema.parse_obj(info)
+
+

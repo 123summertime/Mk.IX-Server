@@ -1,14 +1,18 @@
-from jose import jwt
 from datetime import datetime, timedelta
 
-from const import Auth
+from jose import jwt
+
+from public.const import Auth
 
 
 def createAccessToken(data: dict, expiresDelta):
     encode = data.copy()
-    if data["bot"] == "1":
-        encode["exp"] = datetime.utcnow() + timedelta(minutes=525600)
+
+    if data["bot"]:
+        encode["exp"] = datetime.utcnow() + timedelta(minutes=Auth.BOT_ACCESS_TOKEN_EXPIRE_MINUTES.value)
     else:
-        encode["exp"] = datetime.utcnow() + expiresDelta
+        encode["exp"] = datetime.utcnow() + timedelta(minutes=Auth.USER_ACCESS_TOKEN_EXPIRE_MINUTES.value)
+
     token = jwt.encode(encode, Auth.SECRET_KEY.value, algorithm=Auth.ALGORITHM.value)
+
     return token

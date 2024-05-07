@@ -1,20 +1,19 @@
+from datetime import timedelta
 from uuid import uuid4
-from datetime import datetime, timedelta
 
-from const import API, Auth, Collection, Miscellaneous
-from depend.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
+
+from depends.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
+from public.const import API, Auth, Default
+from public.instance import Collection
+from schema.payload import Register
+from schema.user import UserSchema
+from utils.createAccessToken import createAccessToken
 from utils.helper import hashPassword, timestamp
 from utils.wsConnectionMgr import SCM
-from utils.createAccessToken import createAccessToken
-from schema.user import UserSchema
-from schema.payload import Register
 
-from jose import JWTError, jwt
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-
-
-loginRouter = APIRouter(prefix=f"/{API.version.value}/user", tags=['User'])
+loginRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
 
 
 @loginRouter.post('/register')
@@ -30,7 +29,7 @@ def register(registerInfo: Register):
         uuid=userID,
         userName=userName,
         password=hashedPassword,
-        avatar=Miscellaneous.DEFAULT_AVATAR.value,
+        avatar=Default.DEFAULT_AVATAR.value,
         bio="",
         lastSeen=timestamp(),
         lastUpdate=timestamp(),
@@ -62,7 +61,7 @@ def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = False):
     if hashedPassword != userInfo.password:
         raise HTTPException(status_code=401, detail="密码不正确")
 
-    accessTokenExpires = timedelta(minutes=Auth.ACCESS_TOKEN_EXPIRE_MINUTES.value)
+    accessTokenExpires = timedelta(minutes=Auth.USER_ACCESS_TOKEN_EXPIRE_MINUTES.value)
     token = createAccessToken(
         {"uuid": formData.username, "bot": isBot},
         accessTokenExpires

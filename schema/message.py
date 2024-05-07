@@ -1,7 +1,6 @@
-from typing import Any
 from pydantic import BaseModel
 
-from stateCode import RequestState
+from public.stateCode import RequestState
 
 
 class GetMessageSchema(BaseModel):

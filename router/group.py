@@ -1,25 +1,25 @@
-from typing import List
-from uuid import uuid4
 import base64
+import io
+from uuid import uuid4
 
-from const import API, Database, Collection, Miscellaneous
-from stateCode import RequestState
-from depend.getInfo import getSelfInfo, getGroupInfo, getGroupInfoWithAvatar, getUserInfo
-from depend.permission import NonePermission, UserPermission, AdminPermission, OwnerPermission
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import HTMLResponse, StreamingResponse
+
+from depends.getInfo import getSelfInfo, getGroupInfo, getGroupInfoWithAvatar, getUserInfo
+from public.const import API, Database, Limits, Default
+from public.instance import Collection
+from depends.permission import Permission
+from public.stateCode import RequestState
+from schema.group import GroupSchema
+from schema.message import SysMessageSchema
+from schema.payload import GroupQA, GroupRegister, Info, Note
+from schema.storage import RequestMsgSchema
+from schema.user import UserSchema
 from utils.dbCRUD import DB_CRUD
 from utils.helper import timestamp, convertObjectIDtoInfo
 from utils.wsConnectionMgr import GCM, SCM
-from schema.user import UserSchema
-from schema.group import GroupSchema
-from schema.payload import GroupQA, GroupRegister, Info, Note
-from schema.storage import RequestMsgSchema
-from schema.message import SysMessageSchema
 
-from fastapi import FastAPI, APIRouter, Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
-
-
-groupRouter = APIRouter(prefix=f"/{API.version.value}/group", tags=['Group'])
+groupRouter = APIRouter(prefix=f"/{API.VERSION.value}/group", tags=['Group'])
 
 
 @groupRouter.post("/register")
@@ -29,12 +29,12 @@ def makeGroup(registerInfo: GroupRegister,
     创建群
     '''
     name, Q, A = registerInfo.name, registerInfo.Q, registerInfo.A
-    nameMinLength, nameMaxLength = Miscellaneous.GROUP_NAME_LENGTH_RANGE.value
-    QAMinLength, QAMaxLength = Miscellaneous.GROUP_QA_LENGTH_RANGE.value
+    nameLimit = Limits.GROUP_NAME_LENGTH_RANGE.value
+    qaLimit = Limits.GROUP_QA_LENGTH_RANGE.value
 
-    if not nameMinLength <= len(name) <= nameMaxLength:
+    if not (nameLimit['MIN'] <= len(name) <= nameLimit['MAX']):
         raise HTTPException(status_code=400, detail=f"群名长度必须在[{nameMinLength}, {nameMaxLength}]以内")
-    if (not QAMinLength <= len(Q) <= QAMaxLength) or (not QAMinLength <= len(A) <= QAMaxLength):
+    if (not qaLimit['MIN'] <= len(Q) <= qaLimit['MAX']) or (not qaLimit['MIN'] <= len(A) <= qaLimit['MAX']):
         raise HTTPException(status_code=400, detail=f"问题和答案长度必须在[{QAMinLength}, {QAMaxLength}]以内")
 
     groupID = str(uuid4().int)[::4]
@@ -42,7 +42,7 @@ def makeGroup(registerInfo: GroupRegister,
     newGroup = dict(GroupSchema(
         group=groupID,
         name=name,
-        avatar=Miscellaneous.DEFAULT_AVATAR.value,
+        avatar=Default.DEFAULT_AVATAR.value,
         lastUpdate=timestamp(),
         owner=userInfo.id,
         question={Q: A},
@@ -62,7 +62,7 @@ def makeGroup(registerInfo: GroupRegister,
 
 
 @groupRouter.delete('/{group}')
-def deleteGroup(info: Info = Depends(OwnerPermission)):
+def deleteGroup(info: Info = Depends(Permission.OwnerPermission.value)):
     '''
     解散群 仅群主可用
     '''
@@ -82,7 +82,7 @@ def deleteGroup(info: Info = Depends(OwnerPermission)):
 
 
 @groupRouter.get('/{group}/members')
-def getMembersInfo(info: Info = Depends(UserPermission)):
+def getMembersInfo(info: Info = Depends(Permission.UserPermission.value)):
     '''
     获取群成员信息 群员权限
     '''
@@ -94,7 +94,7 @@ def getMembersInfo(info: Info = Depends(UserPermission)):
 
 
 @groupRouter.delete("/{group}/members/me")
-def deleteSelf(info: Info = Depends(UserPermission)):
+def deleteSelf(info: Info = Depends(Permission.UserPermission.value)):
     '''
     退出群 群员可用 群主除外
     '''
@@ -122,7 +122,7 @@ def deleteSelf(info: Info = Depends(UserPermission)):
 
 
 @groupRouter.delete("/{group}/members/{uuid}")
-def deleteUser(info: Info = Depends(AdminPermission),
+def deleteUser(info: Info = Depends(Permission.AdminPermission.value),
                targetInfo: UserSchema = Depends(getUserInfo)):
     '''
     踢出群，群主/管理员可用
@@ -162,7 +162,7 @@ def getAdminInfo(groupInfo: GroupSchema = Depends(getGroupInfo)):
 
 @groupRouter.patch("/{group}/members/admin/{uuid}")
 def admin(operation: bool,
-          info: Info = Depends(OwnerPermission),
+          info: Info = Depends(Permission.OwnerPermission.value),
           targetInfo: UserSchema = Depends(getUserInfo)):
     '''
     增加/减少管理员，仅群主可用
@@ -210,14 +210,14 @@ def getInfo(groupInfo: GroupSchema = Depends(getGroupInfoWithAvatar)):
 
 @groupRouter.patch('/{group}/info/name')
 def modifyGroupName(newName: Note,
-                    info: Info = Depends(AdminPermission)):
+                    info: Info = Depends(Permission.AdminPermission.value)):
     '''
     修改群名 管理员权限
     '''
     groupInfo, _ = info.groupInfo, info.userInfo
-    nameMinLength, nameMaxLength = Miscellaneous.GROUP_NAME_LENGTH_RANGE.value
+    limit = Limits.GROUP_NAME_LENGTH_RANGE.value
 
-    if not (nameMinLength <= len(newName.note) <= nameMaxLength):
+    if not (limit['MIN'] <= len(newName.note) <= limit['MAX']):
         raise HTTPException(status_code=400, detail=f"群名长度必须在[{nameMinLength}, {nameMaxLength}]以内")
 
     Collection.GROUP.value.update(
@@ -230,13 +230,13 @@ def modifyGroupName(newName: Note,
 
 @groupRouter.patch('/{group}/info/avatar')
 def modifyGroupAvatar(newAvatar: Note,
-                      info: Info = Depends(AdminPermission)):
+                      info: Info = Depends(Permission.AdminPermission.value)):
     '''
     修改群头像 管理员权限
     '''
     avatar = newAvatar.note
     groupInfo, _ = info.groupInfo, info.userInfo
-    avatarMinSize, avatarMaxSize = Miscellaneous.GROUP_AVATAR_MIN_SIZE.value
+    limit = Limits.GROUP_AVATAR_SIZE_RANGE.value
 
     # 初步判定大小 1KB文件编码后约为1400字符
     if len(avatar) > avatarMaxSize * 1400:
@@ -244,7 +244,7 @@ def modifyGroupAvatar(newAvatar: Note,
 
     img = base64.b64decode(avatar.split(',')[1])
     size = len(img) // 1024
-    if not (avatarMinSize <= size <= avatarMaxSize):
+    if not (limit['MIN'] <= size <= limit['MAX']):
         raise HTTPException(status_code=400, detail=f"文件大小必须在[{avatarMinSize}, {avatarMaxSize}]KB以内")
 
     Collection.GROUP.value.update(
@@ -256,7 +256,7 @@ def modifyGroupAvatar(newAvatar: Note,
 
 
 @groupRouter.get("/{group}/verify/question")
-def joinQuestion(info: Info = Depends(NonePermission)):
+def joinQuestion(info: Info = Depends(Permission.NonePermission.value)):
     '''
     获取入群问题 无权限
     '''
@@ -275,7 +275,7 @@ def joinQuestion(info: Info = Depends(NonePermission)):
 
 @groupRouter.post("/{group}/verify/answer")
 def join(answer: GroupQA,
-         info: Info = Depends(NonePermission)):
+         info: Info = Depends(Permission.NonePermission.value)):
     '''
     通过回答问题加入群聊 无权限
     '''
@@ -300,13 +300,13 @@ def join(answer: GroupQA,
 
 @groupRouter.post('/{group}/verify/request')
 async def joinRequest(joinText: Note,
-                      info: Info = Depends(NonePermission)):
+                      info: Info = Depends(Permission.NonePermission.value)):
     '''
     入群申请 非群员权限
     '''
     time = timestamp()
     groupInfo, userInfo = info.groupInfo, info.userInfo
-    reqCollection = DB_CRUD(Database.ReqDB.value, groupInfo.group, RequestMsgSchema)
+    reqCollection = DB_CRUD(Database.REQUSET_DB.value, groupInfo.group, RequestMsgSchema)
     admins = groupInfo.admin + [groupInfo.owner]
 
     if groupInfo.id in userInfo.groups:
@@ -319,7 +319,7 @@ async def joinRequest(joinText: Note,
 
     # 时间单位: ms
     if requestExist and requestExist.state == 0 and int(timestamp()) - int(requestExist.time) < \
-            int(Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
+            int(Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
         raise HTTPException(status_code=400, detail="申请中，等待审核")
 
     sysMessage = SysMessageSchema(
@@ -353,16 +353,16 @@ async def joinRequest(joinText: Note,
 
 
 @groupRouter.get('/{group}/verify/request')
-async def queryJoinRequest(info: Info = Depends(AdminPermission)):
+async def queryJoinRequest(info: Info = Depends(Permission.AdminPermission.value)):
     '''
     获取群验证消息 管理员权限
     结果通过ws发送
     '''
     groupInfo, userInfo = info.groupInfo, info.userInfo
 
-    reqCollection = DB_CRUD(Database.ReqDB.value, groupInfo.group, RequestMsgSchema)
+    reqCollection = DB_CRUD(Database.REQUSET_DB.value, groupInfo.group, RequestMsgSchema)
     messages = reqCollection.queryMany(  # 获取在有效时间内的请求 单位:ms
-        {"time": {"$gt": str(int(timestamp()) - Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
+        {"time": {"$gt": str(int(timestamp()) - Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
         {"_id": 0}
     )
 
@@ -385,7 +385,7 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
 @groupRouter.post('/{group}/verify/response')
 async def requestResponse(verdict: bool,
                           time: Note,
-                          info: Info = Depends(AdminPermission)):
+                          info: Info = Depends(Permission.AdminPermission.value)):
     '''
     验证群验证消息，管理员权限
     :param verdict: True通过 False不通过
@@ -395,10 +395,10 @@ async def requestResponse(verdict: bool,
     admins = groupInfo.admin + [groupInfo.owner]
 
     # 时间单位: ms
-    if int(time) < int(timestamp()) - Miscellaneous.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000:
+    if int(time) < int(timestamp()) - Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000:
         raise HTTPException(status_code=400, detail="请求已过期")
 
-    reqCollection = DB_CRUD(Database.ReqDB.value, groupInfo.group, RequestMsgSchema)
+    reqCollection = DB_CRUD(Database.REQUSET_DB.value, groupInfo.group, RequestMsgSchema)
     requestInfo = reqCollection.query(
         {"time": time},
         {"_id": 0}
@@ -460,6 +460,52 @@ async def requestResponse(verdict: bool,
             await SCM.sending(info.uuid, dict(sysMessage))
 
     return {"detail": "ok"}
+
+
+@groupRouter.post('/{group}/upload')
+async def groupFileUpload(file: UploadFile = File(...),
+                          info: Info = Depends(Permission.UserPermission.value)):
+    groupInfo, userInfo = info.groupInfo, info.userInfo
+    limit = Limits.GROUP_FILE_SIZE_RANGE.value
+
+    content = await file.read()
+
+    if not (limit['MIN'] <= len(content) <= limit['MAX']):
+        return HTTPException(status_code=400, detail=f"文件大小必须在[{fileMinSize}, {fileMaxSize}]KB以内")
+
+    Collection.FS.value.add(content, file.filename, file.content_type, groupInfo.group)
+
+    return {"detail": "ok"}
+
+
+@groupRouter.post('/upload')
+async def requestResponse(file: UploadFile = File(...)):
+    file_size = await file.read()
+    content = f"文件名: {file.filename}, 文件大小: {len(file_size)} bytes"
+    print(content)
+
+    Collection.FS.value.add(file_size, file.filename, file.content_type, "111")
+
+    return {"detail": "ok"}
+
+
+@groupRouter.get("/")
+async def tryit():
+    content = """
+<body>
+<form action="upload" enctype="multipart/form-data" method="post">
+<input name="file" type="file">
+<input type="submit">
+</form>
+</body>
+    """
+    return HTMLResponse(content=content)
+
+
+@groupRouter.get("/download")
+async def tryit2():
+    fileItem = Collection.FS.value.query("38a7736fb9231449a0a2f6a9f0d78d41431f9fcfc34ae411d9b9ec3c17bfda49")
+    return StreamingResponse(io.BytesIO(fileItem.file), media_type=fileItem.type)
 
 
 @groupRouter.post('/invite')

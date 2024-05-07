@@ -1,10 +1,10 @@
 import hashlib
 from datetime import datetime
 
-from schema.user import UserSchema
+from public.const import Database
+from public.instance import Collection
 from schema.storage import StorageSchema
-
-from const import Database, Collection
+from schema.user import UserSchema
 from utils.dbCRUD import DB_CRUD
 
 
@@ -29,7 +29,7 @@ def beforeSendCheck(userID, groupID, message):
         return "Failed"
 
     if message.type == "revoke":
-        DB = DB_CRUD(Database.StorageDB.value, groupID, StorageSchema)
+        DB = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
         getMessage = DB.query(
             {"time": message.payload},
             {"senderID": 1}

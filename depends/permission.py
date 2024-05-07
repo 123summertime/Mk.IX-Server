@@ -1,10 +1,12 @@
-from stateCode import PermissionLevel
-from schema.user import UserSchema
+from enum import Enum
+
+from fastapi import HTTPException, Depends
+
+from depends.getInfo import getSelfInfo, getGroupInfo
+from public.stateCode import PermissionLevel
 from schema.group import GroupSchema
 from schema.payload import Info
-from depend.getInfo import getSelfInfo, getGroupInfo
-
-from fastapi import HTTPException, Depends, Path
+from schema.user import UserSchema
 
 
 class checkPermission:
@@ -38,7 +40,8 @@ class checkPermission:
         return Info.parse_obj(info)
 
 
-NonePermission = checkPermission(PermissionLevel.NONE)
-UserPermission = checkPermission(PermissionLevel.USER)
-AdminPermission = checkPermission(PermissionLevel.ADMIN)
-OwnerPermission = checkPermission(PermissionLevel.OWNER)
+class Permission(Enum):
+    NonePermission = checkPermission(PermissionLevel.NONE)
+    UserPermission = checkPermission(PermissionLevel.USER)
+    AdminPermission = checkPermission(PermissionLevel.ADMIN)
+    OwnerPermission = checkPermission(PermissionLevel.OWNER)
