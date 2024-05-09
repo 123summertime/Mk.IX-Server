@@ -30,7 +30,7 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Se
                 senderID=userID,
                 payload=message["payload"]
             )
-            await GCM.sending(groupID, websocket, userID, getMessage)
+            await GCM.sending(groupID, userID, getMessage)
 
     except Exception as e:
         print("GCM", groupID, e)

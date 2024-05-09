@@ -31,8 +31,8 @@ class GroupConnectionManager:
             self.addConnectedGroup(groupID)
         await self._online[groupID].connect(websocket, userID, Authorization)
 
-    async def sending(self, groupID, websocket, userID, message):
-        await self._online[groupID].sending(websocket, userID, message)
+    async def sending(self, groupID, userID, message):
+        await self._online[groupID].sending(userID, message)
 
 
 class GroupConnections:
@@ -78,7 +78,7 @@ class GroupConnections:
 
         del self._connections[userID]
 
-    async def sending(self, websocket, userID, message):
+    async def sending(self, userID, message):
         check = beforeSendCheck(userID, self.groupID, message)
         if check != "OK":
             sysMsg = SysMessageSchema(

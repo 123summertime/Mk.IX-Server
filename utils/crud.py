@@ -55,22 +55,22 @@ class GridFS_CRUD():
     def add(self, file, filename, contentType, group):
         hashInstance = hashlib.sha256()
         hashInstance.update(file)
-        hashValue = hashInstance.hexdigest()
+        hashcode = hashInstance.hexdigest()
 
-        self._fs.put(file, filename=filename, hash=hashValue, type=contentType)
-        return hashValue
+        self._fs.put(file, filename=filename, hash=hashcode, type=contentType)
+        return hashcode
 
-    def delete(self, hashValue):
+    def delete(self, hashcode):
         file = self._db.fs.files.find_one(
-            {'hash': hashValue}
+            {'hash': hashcode}
         )
 
         if file:
             self._fs.delete(file['_id'])
 
-    def query(self, hashValue) -> FileStorageSchema | None:
+    def query(self, hashcode) -> FileStorageSchema | None:
         file = self._db.fs.files.find_one(
-            {'hash': hashValue}
+            {'hash': hashcode}
         )
 
         if not file:

@@ -10,7 +10,7 @@ from depends.permission import NonePermission, UserPermission, AdminPermission, 
 from public.const import API, Database, Default, Limits
 from public.stateCode import RequestState
 from schema.group import GroupSchema
-from schema.message import SysMessageSchema
+from schema.message import GetMessageSchema, SysMessageSchema
 from schema.payload import GroupQA, GroupRegister, Info, Note
 from schema.storage import RequestMsgSchema
 from schema.user import UserSchema
@@ -359,7 +359,7 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
     '''
     groupInfo, userInfo = info.groupInfo, info.userInfo
 
-    reqCollection = DB_CRUD(Database.REQUSET_DB.value, groupInfo.group, RequestMsgSchema)
+    reqCollection = DB_CRUD(Database.REQUEST_DB.value, groupInfo.group, RequestMsgSchema)
     messages = reqCollection.queryMany(  # 获取在有效时间内的请求 单位:ms
         {"time": {"$gt": str(int(timestamp()) - Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
         {"_id": 0}
@@ -397,7 +397,7 @@ async def requestResponse(verdict: bool,
     if int(time) < int(timestamp()) - Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000:
         raise HTTPException(status_code=400, detail="请求已过期")
 
-    reqCollection = DB_CRUD(Database.REQUSET_DB.value, groupInfo.group, RequestMsgSchema)
+    reqCollection = DB_CRUD(Database.REQUEST_DB.value, groupInfo.group, RequestMsgSchema)
     requestInfo = reqCollection.query(
         {"time": time},
         {"_id": 0}
@@ -467,7 +467,7 @@ async def groupFileUpload(file: UploadFile = File(...),
     '''
     上传文件
     '''
-    groupInfo, _ = info.groupInfo, info.userInfo
+    groupInfo, userInfo = info.groupInfo, info.userInfo
     limit = Limits.GROUP_FILE_SIZE_RANGE.value
 
     content = await file.read()
@@ -475,7 +475,17 @@ async def groupFileUpload(file: UploadFile = File(...),
     if not (limit['MIN'] <= len(content) <= limit['MAX']):
         return HTTPException(status_code=400, detail=f"文件大小必须在[{fileMinSize}, {fileMaxSize}]KB以内")
 
-    FS.add(content, file.filename, file.content_type, groupInfo.group)
+    hashcode = FS.add(content, file.filename, file.content_type, groupInfo.group)
+
+    message = GetMessageSchema(
+        time=timestamp(),
+        type="file",
+        group=groupInfo.group,
+        senderID=userInfo.uuid,
+        payload=hashcode
+    )
+
+    await GCM.sending(groupInfo.group, userInfo.uuid, message)
 
     return {"detail": "ok"}
 
