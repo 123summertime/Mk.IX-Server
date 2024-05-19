@@ -2,7 +2,8 @@ from public.const import Database
 from schema.message import SendMessageSchema, SysMessageSchema
 from schema.storage import StorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP
-from utils.helper import timestamp, beforeSendCheck
+from utils.helper import timestamp
+from utils.checker import beforeSendCheck
 
 
 class GroupConnectionManager:
@@ -117,7 +118,7 @@ class GroupConnections:
 
 class SystemConnectionManager:
     def __init__(self):
-        self._connections = dict()  # item -> {userID: wsConnection}
+        self._connections = dict()  # K: userID  V: wsConnection
 
     def __contains__(self, uuid):
         return uuid in self._connections
@@ -136,3 +137,12 @@ class SystemConnectionManager:
 
 GCM = GroupConnectionManager()
 SCM = SystemConnectionManager()
+
+'''
+发送信息格式
+
+共同包含的内容 {time: 发送时间, type: 信息类型, group: 群号, senderID: 发送者uuid, senderKey: 发送者lastUpdate}
+
+撤回类型 payload: 被撤回信息的发送时间
+文件类型 payload: {name: 文件名, size: 文件大小, hashcode: 文件哈希}
+'''

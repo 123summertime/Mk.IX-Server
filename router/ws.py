@@ -1,3 +1,5 @@
+import traceback
+
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Header
 
 from depends.getInfo import getSelfInfo
@@ -26,13 +28,14 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Se
             getMessage = GetMessageSchema(
                 time=timestamp(),
                 type=message["type"],
-                group=message["group"],
+                group=groupID,
                 senderID=userID,
                 payload=message["payload"]
             )
             await GCM.sending(groupID, userID, getMessage)
 
     except Exception as e:
+        traceback.print_exc()
         print("GCM", groupID, e)
         GCM.removeUser(groupID, userID)
 

@@ -4,11 +4,11 @@ from public.stateCode import RequestState
 
 
 class StorageSchema(BaseModel):
-    time: str
-    type: str
-    senderID: str   # user uuid
-    senderKey: str  # user lastUpdate
-    payload: str
+    time: str = ""
+    type: str = ""
+    senderID: str = ""   # user uuid
+    senderKey: str = ""  # user lastUpdate
+    payload: str = ""
 
 
 class FileStorageSchema(BaseModel):

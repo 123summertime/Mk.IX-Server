@@ -1,5 +1,6 @@
 import hashlib
 from typing import Union, List
+from datetime import datetime, timezone
 
 from gridfs import GridFS
 
@@ -7,6 +8,7 @@ from public.const import Database
 from schema.group import GroupSchema
 from schema.storage import StorageSchema, RequestMsgSchema, FileStorageSchema
 from schema.user import UserSchema
+from utils.helper import timestamp
 
 client = Database.CLIENT.value
 
@@ -40,7 +42,7 @@ class DB_CRUD():
             return None
         return self._schema.parse_obj(info)
 
-    def queryMany(self, kv, ignore) -> List[Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema]] | None:
+    def queryMany(self, kv, ignore={}) -> List[Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema]] | None:
         info = self._collection.find(kv, ignore)
         if not info:
             return None
@@ -57,14 +59,20 @@ class GridFS_CRUD():
         hashInstance.update(file)
         hashcode = hashInstance.hexdigest()
 
-        self._fs.put(file, filename=filename, hash=hashcode, type=contentType)
+        exist = self._db.fs.files.find_one(
+            {'hash': hashcode}
+        )
+        if exist:
+            self.update(hashcode, {"uploadDate": datetime.now(timezone.utc)})
+        else:
+            self._fs.put(file, filename=filename, hash=hashcode, type=contentType, group=group)
+
         return hashcode
 
     def delete(self, hashcode):
         file = self._db.fs.files.find_one(
             {'hash': hashcode}
         )
-
         if file:
             self._fs.delete(file['_id'])
 
@@ -72,17 +80,39 @@ class GridFS_CRUD():
         file = self._db.fs.files.find_one(
             {'hash': hashcode}
         )
-
         if not file:
             return None
 
         info = {
             "name": file['filename'],
             "type": file['type'],
+            "group": file['group'],
             "file": self._fs.get(file['_id']).read()
         }
 
         return FileStorageSchema.parse_obj(info)
+
+    def update(self, hashcode, ukv):
+        file = self._db.fs.files.find_one(
+            {'hash': hashcode}
+        )
+        if not file:
+            return None
+
+        self._db.fs.files.update_one(
+            {'_id': file["_id"]},
+            {'$set': ukv}
+        )
+
+
+class CRUD_helpers():
+    @staticmethod
+    def objectIDtoInfo(objID) -> UserSchema:
+        info = ACCOUNT.query(
+            {"_id": objID},
+            {"_id": 0, "uuid": 1, "lastUpdate": 1}
+        )
+        return info
 
 
 ACCOUNT = DB_CRUD(Database.USER_DB.value, "Account", UserSchema)

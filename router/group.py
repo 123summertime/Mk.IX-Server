@@ -1,6 +1,8 @@
 import base64
 import io
+import json
 from uuid import uuid4
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -14,8 +16,8 @@ from schema.message import GetMessageSchema, SysMessageSchema
 from schema.payload import GroupQA, GroupRegister, Info, Note
 from schema.storage import RequestMsgSchema
 from schema.user import UserSchema
-from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS
-from utils.helper import timestamp, convertObjectIDtoInfo
+from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS, CRUD_helpers
+from utils.helper import timestamp
 from utils.wsConnectionMgr import GCM, SCM
 
 groupRouter = APIRouter(prefix=f"/{API.VERSION.value}/group", tags=['Group'])
@@ -87,7 +89,7 @@ def getMembersInfo(info: Info = Depends(UserPermission)):
     '''
     groupInfo, _ = info.groupInfo, info.userInfo
 
-    membersInfo = [dict(convertObjectIDtoInfo(i)) for i in groupInfo.user]
+    membersInfo = [dict(CRUD_helpers.objectIDtoInfo(i)) for i in groupInfo.user]
 
     return {"users": membersInfo}
 
@@ -152,8 +154,8 @@ def getAdminInfo(groupInfo: GroupSchema = Depends(getGroupInfo)):
     获取群主+管理员信息 无需权限
     '''
     info = {
-        "owner": dict(convertObjectIDtoInfo(groupInfo.owner)),
-        "admin": [dict(convertObjectIDtoInfo(i)) for i in groupInfo.admin]
+        "owner": dict(CRUD_helpers.objectIDtoInfo(groupInfo.owner)),
+        "admin": [dict(CRUD_helpers.objectIDtoInfo(i)) for i in groupInfo.admin]
     }
 
     return info
@@ -344,7 +346,7 @@ async def joinRequest(joinText: Note,
     reqCollection.add(dict(requestMessage))
 
     for objID in admins:
-        info = convertObjectIDtoInfo(objID)
+        info = CRUD_helpers.objectIDtoInfo(objID)
         if info.uuid in SCM:
             await SCM.sending(info.uuid, dict(sysMessage))
 
@@ -454,7 +456,7 @@ async def requestResponse(verdict: bool,
     )
 
     for objID in admins:
-        info = convertObjectIDtoInfo(objID)
+        info = CRUD_helpers.objectIDtoInfo(objID)
         if info.uuid in SCM:
             await SCM.sending(info.uuid, dict(sysMessage))
 
@@ -472,8 +474,8 @@ async def groupFileUpload(file: UploadFile = File(...),
 
     content = await file.read()
 
-    if not (limit['MIN'] <= len(content) <= limit['MAX']):
-        return HTTPException(status_code=400, detail=f"文件大小必须在[{fileMinSize}, {fileMaxSize}]KB以内")
+    if not (limit['MIN'] <= len(content) // 1024 <= limit['MAX']):
+        raise HTTPException(status_code=400, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
 
     hashcode = FS.add(content, file.filename, file.content_type, groupInfo.group)
 
@@ -482,38 +484,30 @@ async def groupFileUpload(file: UploadFile = File(...),
         type="file",
         group=groupInfo.group,
         senderID=userInfo.uuid,
-        payload=hashcode
+        payload=json.dumps({
+            "name": file.filename,
+            "size": len(content),
+            "hashcode": hashcode,
+        })
     )
 
     await GCM.sending(groupInfo.group, userInfo.uuid, message)
 
     return {"detail": "ok"}
 
+
+@groupRouter.get('/{group}/download/{hashcode}')
+def downloadFile(group: str,
+                 hashcode: str,
+                 info: Info = Depends(UserPermission)):
+
+    file = FS.query(hashcode)
+    res = StreamingResponse(io.BytesIO(file.file), media_type=file.type)
+    res.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file.name)}"
+    res.headers["Content-Length"] = str(len(file.file))
+    return res
+
 # ------------------------------
-
-
-@groupRouter.post('/upload')
-async def requestResponse(file: UploadFile = File(...)):
-    file_size = await file.read()
-    content = f"文件名: {file.filename}, 文件大小: {len(file_size)} bytes"
-    print(content)
-
-    FS.add(file_size, file.filename, file.content_type, "111")
-
-    return {"detail": "ok"}
-
-
-@groupRouter.get("/")
-async def tryit():
-    content = """
-<body>
-<form action="upload" enctype="multipart/form-data" method="post">
-<input name="file" type="file">
-<input type="submit">
-</form>
-</body>
-    """
-    return HTMLResponse(content=content)
 
 
 @groupRouter.get("/download")
