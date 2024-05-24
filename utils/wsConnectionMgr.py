@@ -1,9 +1,11 @@
 from public.const import Database
+from public.stateCode import CheckerState
 from schema.message import SendMessageSchema, SysMessageSchema
 from schema.storage import StorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP
 from utils.helper import timestamp
 from utils.checker import beforeSendCheck
+from utils.modifier import beforeSendModify
 
 
 class GroupConnectionManager:
@@ -81,14 +83,16 @@ class GroupConnections:
 
     async def sending(self, userID, message):
         check = beforeSendCheck(userID, self.groupID, message)
-        if check != "OK":
+        if check != CheckerState.OK:
             sysMsg = SysMessageSchema(
                 time=timestamp(),
                 type="fail",
-                payload=check
+                payload=check.value
             )
             await SCM.sending(userID, sysMsg)
             return
+
+        beforeSendModify(userID, self.groupID, message)
 
         userInfo = ACCOUNT.query(
             {"uuid": message.senderID},

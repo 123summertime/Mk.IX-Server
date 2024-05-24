@@ -4,7 +4,7 @@ import json
 from uuid import uuid4
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from depends.getInfo import getSelfInfo, getGroupInfo, getGroupInfoWithAvatar, getUserInfo
@@ -465,6 +465,7 @@ async def requestResponse(verdict: bool,
 
 @groupRouter.post('/{group}/upload')
 async def groupFileUpload(file: UploadFile = File(...),
+                          fileType: str = Form(...),
                           info: Info = Depends(UserPermission)):
     '''
     上传文件
@@ -475,13 +476,13 @@ async def groupFileUpload(file: UploadFile = File(...),
     content = await file.read()
 
     if not (limit['MIN'] <= len(content) // 1024 <= limit['MAX']):
-        raise HTTPException(status_code=400, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
+        raise HTTPException(status_code=413, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
 
     hashcode = FS.add(content, file.filename, file.content_type, groupInfo.group)
 
     message = GetMessageSchema(
         time=timestamp(),
-        type="file",
+        type=fileType,
         group=groupInfo.group,
         senderID=userInfo.uuid,
         payload=json.dumps({
@@ -502,6 +503,9 @@ def downloadFile(group: str,
                  info: Info = Depends(UserPermission)):
 
     file = FS.query(hashcode)
+    if not file:
+        return HTTPException(status_code=400, detail=f"文件不存在或已过期")
+
     res = StreamingResponse(io.BytesIO(file.file), media_type=file.type)
     res.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file.name)}"
     res.headers["Content-Length"] = str(len(file.file))

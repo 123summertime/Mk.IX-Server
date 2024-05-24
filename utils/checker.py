@@ -1,45 +1,56 @@
 from public.const import Database
 from schema.storage import StorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP
+from schema.message import GetMessageSchema
+from public.stateCode import CheckerState
 
 
-def beforeSendCheck(userID, groupID, message):
-    if message.group != groupID:
-        return "未知错误"
+def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+    DB = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
+    getMessage = DB.query(
+        {"time": message.payload},
+        {"senderID": 1}
+    )
 
-    if message.type == "revoke":
-        DB = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
-        getMessage = DB.query(
-            {"time": message.payload},
-            {"senderID": 1}
-        )
+    if not getMessage:
+        return CheckerState.EXPIRED
 
-        if not getMessage:
-            return "消息已过期/不存在"
+    userObjID = ACCOUNT.query(
+        {"uuid": userID},
+        {"_id": 1}
+    ).id
 
-        userObjID = ACCOUNT.query(
-            {"uuid": userID},
-            {"_id": 1}
-        ).id
+    targetObjID = ACCOUNT.query(
+        {"uuid": getMessage.senderID},
+        {"_id": 1}
+    ).id
 
-        targetObjID = ACCOUNT.query(
-            {"uuid": getMessage.senderID},
-            {"_id": 1}
-        ).id
+    targetGroup = GROUP.query(
+        {"group": groupID},
+        {"owner": 1, "admin": 1}
+    )
 
-        targetGroup = GROUP.query(
-            {"group": groupID},
-            {"owner": 1, "admin": 1}
-        )
+    if not userObjID or not targetGroup:
+        return CheckerState.NOT_EXIST
 
-        if not userObjID or not targetGroup:
-            return "用户或群不存在"
+    isOwner = userObjID == targetGroup.owner
+    isAdmin = userObjID in targetGroup.admin
 
-        isOwner = userObjID == targetGroup.owner
-        isAdmin = userObjID in targetGroup.admin
+    if userObjID == targetObjID or isOwner or (isAdmin and targetObjID != targetGroup.owner):
+        return CheckerState.OK
+    return CheckerState.NO_PERMISSION
 
-        if userObjID == targetObjID or isOwner or (isAdmin and targetObjID != targetGroup.owner):
-            return "OK"
-        return "没有权限"
 
-    return "OK"
+def beforeSendCheck(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+    '''
+    如有必要，发送消息前对消息进行检查
+    '''
+    callFunction = {
+        "revoke": revokeMessageChecker,
+    }
+
+    if message.type not in callFunction:
+        return CheckerState.OK
+
+    res = callFunction[message.type](userID, groupID, message)
+    return res
