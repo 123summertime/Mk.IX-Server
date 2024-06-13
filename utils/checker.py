@@ -1,8 +1,12 @@
-from public.const import Database
+import json
+
+from public.const import Database, Limits
 from schema.storage import StorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP
 from schema.message import GetMessageSchema
+from schema.payload import FilePayload
 from public.stateCode import CheckerState
+from pydub import AudioSegment
 
 
 def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
@@ -41,11 +45,30 @@ def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -
     return CheckerState.NO_PERMISSION
 
 
+def audioMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+    payload = FilePayload.parse_obj(json.loads(message.payload))
+    hashcode = payload.hashcode
+    file = FS.query(hashcode)
+    if not file:
+        return CheckerState.UNKNOWN
+
+    try:
+        minLength, maxLength = Limits.GROUP_AUDIO_LENGTH_RANGE
+        audio = AudioSegment.from_file(io.BytesIO(file.file))
+        length = round(len(audio) / 1000)
+        if not (minLength <= length <= maxLength):
+            return CheckerState.EXCEED_LIMIT
+        return CheckerState.OK
+    except Exception as e:
+        return CheckerState.UNKNOWN
+
+
 def beforeSendCheck(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
     '''
     如有必要，发送消息前对消息进行检查
     '''
     callFunction = {
+        "audio": audioMessageChecker,
         "revoke": revokeMessageChecker,
     }
 

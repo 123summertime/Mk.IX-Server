@@ -13,7 +13,7 @@ class API(Enum):
 
 
 class Database(Enum):
-    CLIENT = pymongo.MongoClient(config['Database']['host'], config['Database']['port'], maxPoolSize=config['Database']['maxPoolSize'])
+    CLIENT = pymongo.MongoClient(config['Database']['HOST'], config['Database']['PORT'], maxPoolSize=config['Database']['MAX_POOL_SIZE'])
     USER_DB = "UserInfo"
     STORAGE_DB = "Storage"
     REQUEST_DB = "Request"
@@ -34,6 +34,7 @@ class Default(Enum):
 class Limits(Enum):
     GROUP_NAME_LENGTH_RANGE = config['Limits']['GROUP_NAME_LENGTH_RANGE']
     GROUP_QA_LENGTH_RANGE = config['Limits']['GROUP_QA_LENGTH_RANGE']
+    GROUP_AUDIO_LENGTH_RANGE = config['Limits']['GROUP_AUDIO_LENGTH_RANGE']
     GROUP_AVATAR_SIZE_RANGE = config['Limits']['GROUP_AVATAR_SIZE_RANGE']
     GROUP_FILE_SIZE_RANGE = config['Limits']['GROUP_FILE_SIZE_RANGE']
     GROUP_REQUEST_EXPIRE_MINUTES = config['Limits']['GROUP_REQUEST_EXPIRE_MINUTES']

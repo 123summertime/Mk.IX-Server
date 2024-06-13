@@ -92,20 +92,10 @@ class GroupConnections:
             await SCM.sending(userID, sysMsg)
             return
 
-        beforeSendModify(userID, self.groupID, message)
-
         userInfo = ACCOUNT.query(
             {"uuid": message.senderID},
             {"_id": 0, "lastUpdate": 1}
         )
-
-        self._currentGroupCollection.add(dict(StorageSchema(
-            time=message.time,
-            type=message.type,
-            senderID=message.senderID,
-            senderKey=userInfo.lastUpdate,
-            payload=message.payload,
-        )))
 
         sendMessage = SendMessageSchema(
             time=message.time,
@@ -115,6 +105,24 @@ class GroupConnections:
             senderKey=userInfo.lastUpdate,
             payload=message.payload,
         )
+
+        modify = beforeSendModify(userID, self.groupID, sendMessage)
+        if modify != CheckerState.OK:
+            sysMsg = SysMessageSchema(
+                time=timestamp(),
+                type="fail",
+                payload=modify.value
+            )
+            await SCM.sending(userID, sysMsg)
+            return
+
+        self._currentGroupCollection.add(dict(StorageSchema(
+            time=sendMessage.time,
+            type=sendMessage.type,
+            senderID=sendMessage.senderID,
+            senderKey=userInfo.lastUpdate,
+            payload=sendMessage.payload,
+        )))
 
         for ws in self._connections.values():
             await ws.send_json(dict(sendMessage))
