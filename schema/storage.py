@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from schema.message import MessagePayload
 from public.stateCode import RequestState
 
 
@@ -8,7 +9,7 @@ class StorageSchema(BaseModel):
     type: str = ""
     senderID: str = ""   # user uuid
     senderKey: str = ""  # user lastUpdate
-    payload: str = ""
+    payload: MessagePayload
 
 
 class FileStorageSchema(BaseModel):

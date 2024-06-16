@@ -3,12 +3,19 @@ from pydantic import BaseModel
 from public.stateCode import RequestState
 
 
+class MessagePayload(BaseModel):
+    name: str | None = None
+    size: int | None = None
+    content: str = ""
+    meta: dict | None = None
+
+
 class GetMessageSchema(BaseModel):
     time: str
     type: str
     group: str
     senderID: str   # user集合中的uuid
-    payload: str
+    payload: MessagePayload
 
 
 class SendMessageSchema(BaseModel):
@@ -17,7 +24,7 @@ class SendMessageSchema(BaseModel):
     group: str
     senderID: str   # user集合中的uuid
     senderKey: str  # user集合中的lastUpdate
-    payload: str
+    payload: MessagePayload
 
 
 class SysMessageSchema(BaseModel):
@@ -29,4 +36,3 @@ class SysMessageSchema(BaseModel):
     senderID: str = ""
     senderKey: str = ""
     payload: str = ""
-

@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Hea
 
 from depends.getInfo import getSelfInfo
 from utils.wsConnectionMgr import GCM, SCM
-from schema.message import GetMessageSchema
+from schema.message import GetMessageSchema, MessagePayload
 from utils.helper import timestamp
 
 wsRouter = APIRouter(prefix="/ws", tags=['Websockets'])
@@ -24,13 +24,13 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Se
     try:
         while True:
             message = await websocket.receive_json()
-            print(f"User: {userID} Group: {groupID} Type: {message['type']} Payload: {message['payload'][:30]}")
+            print(f"User: {userID} Group: {groupID} Type: {message['type']} Payload: {message['payload']['content'][:30]}")
             getMessage = GetMessageSchema(
                 time=timestamp(),
                 type=message["type"],
                 group=groupID,
                 senderID=userID,
-                payload=message["payload"]
+                payload=MessagePayload.model_validate(message["payload"])
             )
             await GCM.sending(groupID, userID, getMessage)
 

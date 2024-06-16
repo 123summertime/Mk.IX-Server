@@ -3,8 +3,7 @@ import json
 from public.const import Database, Limits
 from schema.storage import StorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP
-from schema.message import GetMessageSchema
-from schema.payload import FilePayload
+from schema.message import GetMessageSchema, MessagePayload
 from public.stateCode import CheckerState
 from pydub import AudioSegment
 
@@ -12,7 +11,7 @@ from pydub import AudioSegment
 def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
     DB = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
     getMessage = DB.query(
-        {"time": message.payload},
+        {"time": message.payload.content},
         {"senderID": 1}
     )
 
@@ -23,12 +22,10 @@ def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -
         {"uuid": userID},
         {"_id": 1}
     ).id
-
     targetObjID = ACCOUNT.query(
         {"uuid": getMessage.senderID},
         {"_id": 1}
     ).id
-
     targetGroup = GROUP.query(
         {"group": groupID},
         {"owner": 1, "admin": 1}
@@ -46,8 +43,7 @@ def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -
 
 
 def audioMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
-    payload = FilePayload.parse_obj(json.loads(message.payload))
-    hashcode = payload.hashcode
+    hashcode = message.payload.content
     file = FS.query(hashcode)
     if not file:
         return CheckerState.UNKNOWN

@@ -12,7 +12,7 @@ from depends.permission import NonePermission, UserPermission, AdminPermission, 
 from public.const import API, Database, Default, Limits
 from public.stateCode import RequestState
 from schema.group import GroupSchema
-from schema.message import GetMessageSchema, SysMessageSchema
+from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload
 from schema.payload import GroupQA, GroupRegister, Info, Note
 from schema.storage import RequestMsgSchema
 from schema.user import UserSchema
@@ -485,11 +485,11 @@ async def groupFileUpload(file: UploadFile = File(...),
         type=fileType,
         group=groupInfo.group,
         senderID=userInfo.uuid,
-        payload=json.dumps({
-            "name": file.filename,
-            "size": len(content),
-            "hashcode": hashcode,
-        })
+        payload=MessagePayload(
+            name=file.filename,
+            size=len(content),
+            content=hashcode,
+        )
     )
 
     await GCM.sending(groupInfo.group, userInfo.uuid, message)
@@ -510,14 +510,6 @@ def downloadFile(group: str,
     res.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file.name)}"
     res.headers["Content-Length"] = str(len(file.file))
     return res
-
-# ------------------------------
-
-
-@groupRouter.get("/download")
-async def tryit2():
-    fileItem = FS.query("38a7736fb9231449a0a2f6a9f0d78d41431f9fcfc34ae411d9b9ec3c17bfda49")
-    return StreamingResponse(io.BytesIO(fileItem.file), media_type=fileItem.type)
 
 # ------------------------------
 

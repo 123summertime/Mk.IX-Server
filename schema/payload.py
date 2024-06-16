@@ -27,10 +27,3 @@ class GroupQA(BaseModel):
 
 class GroupRegister(GroupQA):
     name: str
-
-
-class FilePayload(BaseModel):
-    name: str
-    size: int
-    hashcode: str
-    meta: dict = {}

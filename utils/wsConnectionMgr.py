@@ -1,6 +1,6 @@
 from public.const import Database
 from public.stateCode import CheckerState
-from schema.message import SendMessageSchema, SysMessageSchema
+from schema.message import GetMessageSchema, SendMessageSchema, SysMessageSchema
 from schema.storage import StorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP
 from utils.helper import timestamp
@@ -81,13 +81,15 @@ class GroupConnections:
 
         del self._connections[userID]
 
-    async def sending(self, userID, message):
+    async def sending(self, userID: str, message: GetMessageSchema):
         check = beforeSendCheck(userID, self.groupID, message)
-        if check != CheckerState.OK:
+        modify = beforeSendModify(userID, self.groupID, message)
+        result = check and modify
+        if not result:
             sysMsg = SysMessageSchema(
                 time=timestamp(),
                 type="fail",
-                payload=check.value
+                payload=result.value
             )
             await SCM.sending(userID, sysMsg)
             return
@@ -106,26 +108,16 @@ class GroupConnections:
             payload=message.payload,
         )
 
-        modify = beforeSendModify(userID, self.groupID, sendMessage)
-        if modify != CheckerState.OK:
-            sysMsg = SysMessageSchema(
-                time=timestamp(),
-                type="fail",
-                payload=modify.value
-            )
-            await SCM.sending(userID, sysMsg)
-            return
-
-        self._currentGroupCollection.add(dict(StorageSchema(
-            time=sendMessage.time,
-            type=sendMessage.type,
-            senderID=sendMessage.senderID,
+        self._currentGroupCollection.add(StorageSchema(
+            time=message.time,
+            type=message.type,
+            senderID=message.senderID,
             senderKey=userInfo.lastUpdate,
-            payload=sendMessage.payload,
-        )))
+            payload=message.payload,
+        ).model_dump())
 
         for ws in self._connections.values():
-            await ws.send_json(dict(sendMessage))
+            await ws.send_json(sendMessage.model_dump())
 
 
 class SystemConnectionManager:

@@ -1,16 +1,16 @@
 import io
 import json
+from math import ceil
 from pydub import AudioSegment
 
 from utils.crud import FS
-from schema.message import SendMessageSchema
-from schema.payload import FilePayload
+from schema.message import GetMessageSchema, MessagePayload
 from public.stateCode import CheckerState
 from datetime import datetime, timezone
 
 
-def forwardFileMessageModifier(userID: str, groupID: str, message: SendMessageSchema) -> CheckerState:
-    hashcode = message.payload
+def forwardFileMessageModifier(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+    hashcode = message.payload.content
     file = FS.query(hashcode)
     if not file:
         return CheckerState.EXPIRED
@@ -18,32 +18,28 @@ def forwardFileMessageModifier(userID: str, groupID: str, message: SendMessageSc
     FS.update(hashcode, {"uploadDate": datetime.now(timezone.utc)})
 
     message.type = "file"
-    message.payload = json.dumps({
-            "name": file.name,
-            "size": len(file.file),
-            "hashcode": hashcode,
-        })
+    message.payload.name = file.name
+    message.payload.size = len(file.file)
+    message.payload.content = hashcode
 
     return CheckerState.OK
 
 
-def audioFileMessageModifier(userID: str, groupID: str, message: SendMessageSchema) -> CheckerState:
-    payload = FilePayload.parse_obj(json.loads(message.payload))
-    hashcode = payload.hashcode
+def audioFileMessageModifier(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+    hashcode = message.payload.content
     file = FS.query(hashcode)
     if not file:
         return CheckerState.UNKNOWN
 
     try:
         audio = AudioSegment.from_file(io.BytesIO(file.file))
-        payload.meta = {"length": round(len(audio) / 1000)}
-        message.payload = json.dumps(dict(payload))
+        message.payload.meta = {"length": ceil(len(audio) / 1000)}
         return CheckerState.OK
     except Exception as e:
         return CheckerState.UNKNOWN
 
 
-def beforeSendModify(userID: str, groupID: str, message: SendMessageSchema) -> CheckerState:
+def beforeSendModify(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
     '''
     如有必要，发送消息前对消息进行原地修改
     '''

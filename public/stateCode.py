@@ -27,3 +27,6 @@ class CheckerState(Enum):
     EXCEED_LIMIT = "时长/大小超出限制"
     NOT_EXIST = "用户或群不存在"
     NO_PERMISSION = "没有权限"
+
+    def __bool__(self):
+        return self is CheckerState.OK
