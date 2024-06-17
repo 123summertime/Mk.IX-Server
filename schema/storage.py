@@ -9,7 +9,7 @@ class StorageSchema(BaseModel):
     type: str = ""
     senderID: str = ""   # user uuid
     senderKey: str = ""  # user lastUpdate
-    payload: MessagePayload
+    payload: MessagePayload | None = None
 
 
 class FileStorageSchema(BaseModel):

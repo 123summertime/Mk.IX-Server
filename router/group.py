@@ -239,13 +239,13 @@ def modifyGroupAvatar(newAvatar: Note,
     limit = Limits.GROUP_AVATAR_SIZE_RANGE.value
 
     # 初步判定大小 1KB文件编码后约为1400字符
-    if len(avatar) > avatarMaxSize * 1400:
-        raise HTTPException(status_code=400, detail=f"文件大小必须在[{avatarMinSize}, {avatarMaxSize}]KB以内")
+    if len(avatar) > limit['MAX'] * 1400:
+        raise HTTPException(status_code=400, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
 
     img = base64.b64decode(avatar.split(',')[1])
     size = len(img) // 1024
     if not (limit['MIN'] <= size <= limit['MAX']):
-        raise HTTPException(status_code=400, detail=f"文件大小必须在[{avatarMinSize}, {avatarMaxSize}]KB以内")
+        raise HTTPException(status_code=400, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
 
     GROUP.update(
         {"group": groupInfo.group},

@@ -1,8 +1,9 @@
+import io
 import json
 
 from public.const import Database, Limits
 from schema.storage import StorageSchema
-from utils.crud import DB_CRUD, ACCOUNT, GROUP
+from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS
 from schema.message import GetMessageSchema, MessagePayload
 from public.stateCode import CheckerState
 from pydub import AudioSegment
@@ -49,13 +50,14 @@ def audioMessageChecker(userID: str, groupID: str, message: GetMessageSchema) ->
         return CheckerState.UNKNOWN
 
     try:
-        minLength, maxLength = Limits.GROUP_AUDIO_LENGTH_RANGE
+        limit = Limits.GROUP_AUDIO_LENGTH_RANGE.value
         audio = AudioSegment.from_file(io.BytesIO(file.file))
         length = round(len(audio) / 1000)
-        if not (minLength <= length <= maxLength):
-            return CheckerState.EXCEED_LIMIT
+        if not (limit['MIN'] <= length <= limit['MAX']):
+            return CheckerState.LIMIT_EXCEED
         return CheckerState.OK
     except Exception as e:
+        print(e)
         return CheckerState.UNKNOWN
 
 
