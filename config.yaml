@@ -20,7 +20,7 @@ Limits:
     MAX: 16
   GROUP_AUDIO_LENGTH_RANGE:
     MIN: 1
-    MAX: 60
+    MAX: 50
   GROUP_AVATAR_SIZE_RANGE:
     MIN: 0
     MAX: 1024
