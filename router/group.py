@@ -63,17 +63,29 @@ def makeGroup(registerInfo: GroupRegister,
 
 
 @groupRouter.delete('/{group}')
-def deleteGroup(info: Info = Depends(OwnerPermission)):
+async def deleteGroup(info: Info = Depends(OwnerPermission)):
     '''
     解散群 仅群主可用
     '''
-    groupInfo, _ = info.groupInfo, info.userInfo
+    groupInfo, userInfo = info.groupInfo, info.userInfo
 
     for objID in groupInfo.user:
         ACCOUNT.update(
             {"_id": objID},
             {"$pull": {"groups": groupInfo.id}}
         )
+
+    deleteMessage = GetMessageSchema(
+        time=timestamp(),
+        type="system",
+        group=groupInfo.group,
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            content=f"该群已被群主解散",
+        )
+    )
+    await GCM.sending(groupInfo.group, userInfo.uuid, deleteMessage)
+
     GROUP.delete(
         {"group": groupInfo.group}
     )
@@ -95,7 +107,7 @@ def getMembersInfo(info: Info = Depends(UserPermission)):
 
 
 @groupRouter.delete("/{group}/members/me")
-def deleteSelf(info: Info = Depends(UserPermission)):
+async def deleteSelf(info: Info = Depends(UserPermission)):
     '''
     退出群 群员可用 群主除外
     '''
@@ -117,14 +129,25 @@ def deleteSelf(info: Info = Depends(UserPermission)):
         {"_id": userInfo.id},
         {"$pull": {"groups": groupInfo.id}}
     )
+
+    removeMessage = GetMessageSchema(
+        time=timestamp(),
+        type="system",
+        group=groupInfo.group,
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            content=f"{userInfo.userName}已退出该群",
+        )
+    )
+    await GCM.sending(groupInfo.group, userInfo.uuid, removeMessage)
     GCM.removeUser(groupInfo.group, userInfo.uuid)
 
     return {"detail": "ok"}
 
 
 @groupRouter.delete("/{group}/members/{uuid}")
-def deleteUser(info: Info = Depends(AdminPermission),
-               targetInfo: UserSchema = Depends(getUserInfo)):
+async def deleteUser(info: Info = Depends(AdminPermission),
+                     targetInfo: UserSchema = Depends(getUserInfo)):
     '''
     踢出群，群主/管理员可用
     '''
@@ -143,7 +166,18 @@ def deleteUser(info: Info = Depends(AdminPermission),
         {"uuid": userInfo.uuid},
         {"$pull": {"groups": groupInfo.id}}
     )
-    GCM.removeUser(groupInfo.group, userInfo.uuid)
+
+    removeMessage = GetMessageSchema(
+        time=timestamp(),
+        type="system",
+        group=groupInfo.group,
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            content=f"{targetInfo.userName}已被移出群聊",
+        )
+    )
+    await GCM.sending(groupInfo.group, userInfo.uuid, removeMessage)
+    GCM.removeUser(groupInfo.group, targetInfo.uuid)
 
     return {"detail": "ok"}
 
@@ -274,8 +308,8 @@ def joinQuestion(info: Info = Depends(NonePermission)):
 
 
 @groupRouter.post("/{group}/verify/answer")
-def join(answer: GroupQA,
-         info: Info = Depends(NonePermission)):
+async def join(answer: GroupQA,
+               info: Info = Depends(NonePermission)):
     '''
     通过回答问题加入群聊 无权限
     '''
@@ -294,6 +328,17 @@ def join(answer: GroupQA,
         {"uuid": userInfo.uuid},
         {"$push": {"groups": groupInfo.id}}
     )
+
+    joinedMessage = GetMessageSchema(
+        time=timestamp(),
+        type="system",
+        group=groupInfo.group,
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            content=f"{userInfo.userName}加入该群",
+        )
+    )
+    await GCM.sending(groupInfo.group, userInfo.uuid, joinedMessage)
 
     return {"detail": "ok"}
 
@@ -404,6 +449,10 @@ async def requestResponse(verdict: bool,
         {"time": time},
         {"_id": 0}
     )
+    targetInfo = ACCOUNT.query(
+        {"uuid": requestInfo.senderID},
+        {}
+    )
 
     if not requestInfo:
         raise HTTPException(status_code=400, detail="该请求不存在")
@@ -415,14 +464,14 @@ async def requestResponse(verdict: bool,
                         if userInfo.id == groupInfo.owner
                         else RequestState.ACCEPTED_BY_ADMIN.value)
 
-        # GROUP.update(
-        #     {"group": groupInfo.group},
-        #     {"$push": {"user": userInfo.id}}
-        # )
-        # ACCOUNT.update(
-        #     {"uuid": userInfo.id},
-        #     {"$push": {"groups": groupInfo.id}}
-        # )
+        GROUP.update(
+            {"group": groupInfo.group},
+            {"$push": {"user": targetInfo.id}}
+        )
+        ACCOUNT.update(
+            {"uuid": targetInfo.id},
+            {"$push": {"groups": groupInfo.id}}
+        )
 
         if requestInfo.senderID in SCM:
             sysMessage = SysMessageSchema(
@@ -439,10 +488,10 @@ async def requestResponse(verdict: bool,
                         if userInfo.id == groupInfo.owner
                         else RequestState.REJECTED_BY_ADMIN.value)
 
-    # reqCollection.update(
-    #     {"time": time},
-    #     {"$set": {"state": currentState}}
-    # )
+    reqCollection.update(
+        {"time": time},
+        {"$set": {"state": currentState}}
+    )
 
     sysMessage = SysMessageSchema(
         time=requestInfo.time,
@@ -459,6 +508,17 @@ async def requestResponse(verdict: bool,
         info = CRUD_helpers.objectIDtoInfo(objID)
         if info.uuid in SCM:
             await SCM.sending(info.uuid, dict(sysMessage))
+
+    joinedMessage = GetMessageSchema(
+        time=timestamp(),
+        type="system",
+        group=groupInfo.group,
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            content=f"{targetInfo.userName}加入该群",
+        )
+    )
+    await GCM.sending(groupInfo.group, userInfo.uuid, joinedMessage)
 
     return {"detail": "ok"}
 

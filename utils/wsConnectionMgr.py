@@ -9,6 +9,9 @@ from utils.modifier import beforeSendModify
 
 
 class GroupConnectionManager:
+    '''
+    所有群的websocket
+    '''
     def __init__(self):
         self._online = dict()
 
@@ -39,6 +42,9 @@ class GroupConnectionManager:
 
 
 class GroupConnections:
+    '''
+    一个群的websocket 在群里发送信息将在这里处理
+    '''
     def __init__(self, groupID):
         self.groupID = groupID
         self._connections = dict()  # K: userID  V: wsConnection
@@ -62,7 +68,7 @@ class GroupConnections:
         )
 
         for msg in messages:
-            await websocket.send_json(dict(SendMessageSchema(
+            print(dict(SendMessageSchema(
                 time=msg.time,
                 type=msg.type,
                 group=self.groupID,
@@ -70,16 +76,25 @@ class GroupConnections:
                 senderKey=msg.senderKey,
                 payload=msg.payload,
             )))
+            await websocket.send_json(SendMessageSchema(
+                time=msg.time,
+                type=msg.type,
+                group=self.groupID,
+                senderID=msg.senderID,
+                senderKey=msg.senderKey,
+                payload=msg.payload,
+            ).model_dump())
 
         self._connections[userID] = websocket
 
     def disconnect(self, userID):
-        ACCOUNT.update(
-            {"uuid": userID},
-            {"$set": {"lastSeen": timestamp()}},
-        )
+        if userID in self._connections:
+            ACCOUNT.update(
+                {"uuid": userID},
+                {"$set": {"lastSeen": timestamp()}},
+            )
 
-        del self._connections[userID]
+            del self._connections[userID]
 
     async def sending(self, userID: str, message: GetMessageSchema):
         check = beforeSendCheck(userID, self.groupID, message)
@@ -121,6 +136,9 @@ class GroupConnections:
 
 
 class SystemConnectionManager:
+    '''
+    系统通知websocket 如:群验证消息，群消息发送失败...
+    '''
     def __init__(self):
         self._connections = dict()  # K: userID  V: wsConnection
 
@@ -141,12 +159,3 @@ class SystemConnectionManager:
 
 GCM = GroupConnectionManager()
 SCM = SystemConnectionManager()
-
-'''
-发送信息格式
-
-共同包含的内容 {time: 发送时间, type: 信息类型, group: 群号, senderID: 发送者uuid, senderKey: 发送者lastUpdate}
-
-撤回类型 payload: 被撤回信息的发送时间
-文件类型 payload: {name: 文件名, size: 文件大小, hashcode: 文件哈希}
-'''

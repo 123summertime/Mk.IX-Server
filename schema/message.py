@@ -14,7 +14,7 @@ class GetMessageSchema(BaseModel):
     time: str
     type: str
     group: str
-    senderID: str   # user集合中的uuid
+    senderID: str = ""   # user集合中的uuid
     payload: MessagePayload
 
 
@@ -22,8 +22,8 @@ class SendMessageSchema(BaseModel):
     time: str
     type: str
     group: str
-    senderID: str   # user集合中的uuid
-    senderKey: str  # user集合中的lastUpdate
+    senderID: str = ""   # user集合中的uuid
+    senderKey: str = ""  # user集合中的lastUpdate
     payload: MessagePayload
 
 
