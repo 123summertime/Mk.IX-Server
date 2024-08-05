@@ -160,6 +160,8 @@ async def friendRequest(reason: Note,
     sysMessage = SysMessageSchema(
         time=time,
         type="friend",
+        target=targetInfo.uuid,
+        targetKey=targetInfo.lastUpdate,
         senderID=userInfo.uuid,
         senderKey=userInfo.lastUpdate,
         payload=reason.note,
@@ -168,6 +170,8 @@ async def friendRequest(reason: Note,
     requestMessage = RequestMsgSchema(
         time=time,
         type="friend",
+        target=targetInfo.uuid,
+        targetKey=targetInfo.lastUpdate,
         senderID=userInfo.uuid,
         senderKey=userInfo.lastUpdate,
         payload=reason.note,
@@ -190,7 +194,7 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
 
     reqCollection = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_DB.value, RequestMsgSchema)
     messages = reqCollection.queryMany(  # 获取在有效时间内的请求 单位:ms
-        {"time": {"$gt": str(int(timestamp()) - Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
+        {"target": userInfo.uuid, "time": {"$gt": str(int(timestamp()) - Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
         {"_id": 0}
     )
 
@@ -199,6 +203,8 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
             time=msg.time,
             type=msg.type,
             state=msg.state,
+            target=msg.target,
+            targetKey=msg.targetKey,
             senderID=msg.senderID,
             senderKey=msg.senderKey,
             payload=msg.payload,

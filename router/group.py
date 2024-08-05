@@ -371,8 +371,8 @@ async def joinRequest(joinText: Note,
     sysMessage = SysMessageSchema(
         time=time,
         type="join",
-        group=groupInfo.group,
-        groupKey=groupInfo.lastUpdate,
+        target=groupInfo.group,
+        targetKey=groupInfo.lastUpdate,
         senderID=userInfo.uuid,
         senderKey=userInfo.lastUpdate,
         payload=joinText.note,
@@ -381,8 +381,8 @@ async def joinRequest(joinText: Note,
     requestMessage = RequestMsgSchema(
         time=time,
         type="join",
-        group=groupInfo.group,
-        groupKey=groupInfo.lastUpdate,
+        target=groupInfo.group,
+        targetKey=groupInfo.lastUpdate,
         senderID=userInfo.uuid,
         senderKey=userInfo.lastUpdate,
         payload=joinText.note,
@@ -416,8 +416,8 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
         sysMessage = SysMessageSchema(
             time=msg.time,
             type=msg.type,
-            group=groupInfo.group,
-            groupKey=groupInfo.lastUpdate,
+            target=groupInfo.group,
+            targetKey=groupInfo.lastUpdate,
             state=msg.state,
             senderID=msg.senderID,
             senderKey=msg.senderKey,
@@ -425,7 +425,7 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
         )
 
         if userInfo.uuid in SCM:
-            await SCM.sending(userInfo.uuid, dict(sysMessage))
+            await SCM.sending(userInfo.uuid, sysMessage.model_dump())
 
 
 @groupRouter.post('/{group}/verify/response')
@@ -477,7 +477,7 @@ async def requestResponse(verdict: bool,
             sysMessage = SysMessageSchema(
                 time=timestamp(),
                 type="joined",
-                group=groupInfo.group,
+                target=groupInfo.group,
                 state=currentState,
                 payload=groupInfo.name
             )
@@ -496,8 +496,8 @@ async def requestResponse(verdict: bool,
     sysMessage = SysMessageSchema(
         time=requestInfo.time,
         type=requestInfo.type,
-        group=groupInfo.group,
-        groupKey=requestInfo.groupKey,
+        target=groupInfo.group,
+        targetKey=requestInfo.groupKey,
         state=currentState,
         senderID=requestInfo.senderID,
         senderKey=requestInfo.senderKey,

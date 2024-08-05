@@ -21,8 +21,8 @@ class FileStorageSchema(BaseModel):
 class RequestMsgSchema(BaseModel):
     time: str = ""
     type: str = ""
-    group: str = ""
-    groupKey: str = ""
+    target: str = ""
+    targetKey: str = ""
     state: int = RequestState.PENDING.value
     senderID: str = ""
     senderKey: str = ""
