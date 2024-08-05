@@ -401,8 +401,8 @@ async def joinRequest(joinText: Note,
 @groupRouter.get('/{group}/verify/request')
 async def queryJoinRequest(info: Info = Depends(AdminPermission)):
     '''
-    获取群验证消息 管理员权限
-    结果通过ws发送
+    获取该群的验证消息 管理员权限
+    结果通过ws(SCM)发送
     '''
     groupInfo, userInfo = info.groupInfo, info.userInfo
 
@@ -570,36 +570,3 @@ def downloadFile(group: str,
     res.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file.name)}"
     res.headers["Content-Length"] = str(len(file.file))
     return res
-
-# ------------------------------
-
-
-@groupRouter.post('/invite')
-def inviteRequest(targetGroup: str, user: UserSchema = Depends(getSelfInfo)):
-    '''
-    入群邀请
-    :param targetGroup: 目标群号
-    :param user: 用户信息
-    '''
-    # groupConfig下邀请
-    groupInfo = GROUP.query(
-        {"group": targetGroup},
-        {"_id": 1, "question": 1, "owner": 1, "admin": 1}
-    )
-
-    if not groupInfo:
-        raise HTTPException(status_code=400, detail="群不存在")
-
-    time = timestamp()
-
-    if not groupInfo:
-        pass
-
-    if user["_id"] != groupInfo.owner and user["_id"] not in groupInfo.admin:
-        raise HTTPException(status_code=403, detail="仅群主/管理员可以邀请")
-
-
-@groupRouter.post('/friendRequest')
-def friendRequest(targetUser: str, user: UserSchema = Depends(getSelfInfo)):
-    # 个人profile下发起
-    pass

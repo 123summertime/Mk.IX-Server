@@ -17,6 +17,7 @@ class Database(Enum):
     USER_DB = "UserInfo"
     STORAGE_DB = "Storage"
     REQUEST_DB = "Request"
+    FRIEND_REQUEST_DB = "Friend"
 
 
 class Auth(Enum):
@@ -39,6 +40,4 @@ class Limits(Enum):
     GROUP_FILE_SIZE_RANGE = config['Limits']['GROUP_FILE_SIZE_RANGE']
     GROUP_REQUEST_EXPIRE_MINUTES = config['Limits']['GROUP_REQUEST_EXPIRE_MINUTES']
     GROUP_INVITE_EXPIRE_MINUTES = config['Limits']['GROUP_INVITE_EXPIRE_MINUTES']
-
-
-
+    FRIEND_REQUEST_EXPIRE_MINUTES = config['Limits']['FRIEND_REQUEST_EXPIRE_MINUTES']

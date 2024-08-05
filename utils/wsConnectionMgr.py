@@ -68,14 +68,6 @@ class GroupConnections:
         )
 
         for msg in messages:
-            print(dict(SendMessageSchema(
-                time=msg.time,
-                type=msg.type,
-                group=self.groupID,
-                senderID=msg.senderID,
-                senderKey=msg.senderKey,
-                payload=msg.payload,
-            )))
             await websocket.send_json(SendMessageSchema(
                 time=msg.time,
                 type=msg.type,

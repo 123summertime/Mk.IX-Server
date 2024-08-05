@@ -5,17 +5,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 
 from depends.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
-from public.const import API, Auth, Default
-from utils.crud import ACCOUNT, GROUP
+from public.const import API, Auth, Default, Database, Limits
+from public.stateCode import RequestState
+from utils.crud import ACCOUNT, GROUP, DB_CRUD
 from utils.wsConnectionMgr import SCM
-from schema.payload import Register
+from schema.payload import Register, Note
 from schema.user import UserSchema
+from schema.message import SysMessageSchema
+from schema.storage import StorageSchema, RequestMsgSchema
 from utils.helper import hashPassword, timestamp, createAccessToken
 
-loginRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
+userRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
 
 
-@loginRouter.post('/register')
+@userRouter.post('/register')
 def register(registerInfo: Register):
     '''
     用户注册
@@ -42,7 +45,7 @@ def register(registerInfo: Register):
     return info
 
 
-@loginRouter.post('/token')
+@userRouter.post('/token')
 def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = False):
     '''
     登录表单验证
@@ -72,7 +75,7 @@ def token(formData: OAuth2PasswordRequestForm = Depends(), isBot: bool = False):
     }
 
 
-@loginRouter.get('/check')
+@userRouter.get('/check')
 def check(newToken=Depends(checker)):
     '''
     验证token是否有效
@@ -81,7 +84,7 @@ def check(newToken=Depends(checker)):
     return newToken
 
 
-@loginRouter.get('/profile/me')
+@userRouter.get('/profile/me')
 def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     获取自己的信息 需要登录
@@ -100,7 +103,7 @@ def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     return info
 
 
-@loginRouter.get('/profile/{uuid}')
+@userRouter.get('/profile/{uuid}')
 def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
     '''
     获取用户信息
@@ -116,7 +119,7 @@ def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
     return info
 
 
-@loginRouter.get('/profile/current/{uuid}')
+@userRouter.get('/profile/current/{uuid}')
 def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
     '''
     获取用户当前信息
@@ -132,3 +135,74 @@ def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
     }
 
     return info
+
+
+@userRouter.post('/{uuid}/friend')
+async def friendRequest(reason: Note,
+                        userInfo: UserSchema = Depends(getSelfInfo),
+                        targetInfo: UserSchema = Depends(getUserInfo)):
+    '''
+    发送加好友请求
+    '''
+    time = timestamp()
+    reqCollection = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_DB.value, RequestMsgSchema)
+
+    requestExist = reqCollection.query(
+        {"senderID": userInfo.uuid},
+        {"time": 1, "state": 1}
+    )
+
+    if requestExist \
+            and requestExist.state == RequestState.PENDING.value \
+            and int(timestamp()) - int(requestExist.time) < int(Limits.FRIEND_REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
+        raise HTTPException(status_code=400, detail="已经申请过了")
+
+    sysMessage = SysMessageSchema(
+        time=time,
+        type="friend",
+        senderID=userInfo.uuid,
+        senderKey=userInfo.lastUpdate,
+        payload=reason.note,
+    )
+
+    requestMessage = RequestMsgSchema(
+        time=time,
+        type="friend",
+        senderID=userInfo.uuid,
+        senderKey=userInfo.lastUpdate,
+        payload=reason.note,
+    )
+
+    reqCollection.add(requestMessage.model_dump())
+
+    if targetInfo.uuid in SCM:
+        await SCM.sending(targetInfo.uuid, sysMessage.model_dump())
+
+    return {"detail": "ok"}
+
+
+@userRouter.get('/{uuid}/verify/request')
+async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
+    '''
+    获取好友申请
+    结果通过ws(SCM)发送
+    '''
+
+    reqCollection = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_DB.value, RequestMsgSchema)
+    messages = reqCollection.queryMany(  # 获取在有效时间内的请求 单位:ms
+        {"time": {"$gt": str(int(timestamp()) - Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
+        {"_id": 0}
+    )
+
+    for msg in messages:
+        sysMessage = SysMessageSchema(
+            time=msg.time,
+            type=msg.type,
+            state=msg.state,
+            senderID=msg.senderID,
+            senderKey=msg.senderKey,
+            payload=msg.payload,
+        )
+
+        if userInfo.uuid in SCM:
+            await SCM.sending(userInfo.uuid, sysMessage.model_dump())
