@@ -1,11 +1,10 @@
 import base64
 import io
-import json
-from uuid import uuid4
 from urllib.parse import quote
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from depends.getInfo import getSelfInfo, getGroupInfo, getGroupInfoWithAvatar, getUserInfo
 from depends.permission import NonePermission, UserPermission, AdminPermission, OwnerPermission
@@ -40,7 +39,7 @@ def makeGroup(registerInfo: GroupRegister,
 
     groupID = str(uuid4().int)[::4]
 
-    newGroup = dict(GroupSchema(
+    newGroup = GroupSchema(
         group=groupID,
         name=name,
         avatar=Default.DEFAULT_AVATAR.value,
@@ -49,11 +48,10 @@ def makeGroup(registerInfo: GroupRegister,
         question={Q: A},
         admin=[],
         user=[userInfo.id],
-    ))
-
+    ).model_dump()
     del newGroup["id"]
 
-    groupObjID = GROUP.add(dict(newGroup)).inserted_id
+    groupObjID = GROUP.add(newGroup).inserted_id
     ACCOUNT.update(
         {"uuid": userInfo.uuid},
         {"$push": {"groups": groupObjID}}
@@ -75,21 +73,10 @@ async def deleteGroup(info: Info = Depends(OwnerPermission)):
             {"$pull": {"groups": groupInfo.id}}
         )
 
-    deleteMessage = GetMessageSchema(
-        time=timestamp(),
-        type="system",
-        group=groupInfo.group,
-        senderID=userInfo.uuid,
-        payload=MessagePayload(
-            content=f"该群已被群主解散",
-        )
-    )
-    await GCM.sending(groupInfo.group, userInfo.uuid, deleteMessage)
-
     GROUP.delete(
         {"group": groupInfo.group}
     )
-    GCM.removeGroup(groupInfo.group)
+    await GCM.removeGroup(groupInfo.group)
 
     return {"detail": "ok"}
 
@@ -481,7 +468,7 @@ async def requestResponse(verdict: bool,
                 state=currentState,
                 payload=groupInfo.name
             )
-            await SCM.sending(requestInfo.senderID, dict(sysMessage))
+            await SCM.sending(requestInfo.senderID, sysMessage.model_dump())
 
     else:
         currentState = (RequestState.REJECTED_BY_OWNER.value

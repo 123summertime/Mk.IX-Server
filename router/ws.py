@@ -1,11 +1,9 @@
-import traceback
-
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Header
 
 from depends.getInfo import getSelfInfo, getGroupInfo
-from utils.wsConnectionMgr import GCM, SCM
 from schema.message import GetMessageSchema, MessagePayload
 from utils.helper import timestamp
+from utils.wsConnectionMgr import GCM, SCM
 
 wsRouter = APIRouter(prefix="/ws", tags=['Websockets'])
 
@@ -38,9 +36,9 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Se
             await GCM.sending(groupID, userID, getMessage)
 
     except Exception as e:
-        traceback.print_exc()
+        # traceback.print_exc()
         print("GCM", groupID, e)
-        GCM.removeUser(groupID, userID)
+        await GCM.removeUser(groupID, userID)
 
 
 @wsRouter.websocket('/systemWS')
@@ -58,4 +56,4 @@ async def SystemMessageSender(websocket: WebSocket, userID: str, Sec_Websocket_P
             await websocket.receive_json()
     except Exception as e:
         print("SCM", e)
-        SCM.disconnect(userID)
+        await SCM.disconnect(userID)

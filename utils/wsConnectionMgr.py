@@ -26,18 +26,23 @@ class GroupConnectionManager:
 
         self._online[groupID] = GroupConnections(groupID)
 
-    def removeGroup(self, groupID):
-        del self._online[groupID]
-
-    def removeUser(self, groupID, uuid):
-        self._online[groupID].disconnect(uuid)
+    async def removeGroup(self, groupID):
+        if groupID in self._online:
+            await self._online[groupID].disconnectAll()
+            del self._online[groupID]
 
     async def addConnectedUser(self, groupID, websocket, userID, Authorization):
         if groupID not in self._online:
             self.addConnectedGroup(groupID)
         await self._online[groupID].connect(websocket, userID, Authorization)
 
+    async def removeUser(self, groupID, uuid):
+        if groupID in self._online:
+            await self._online[groupID].disconnect(uuid)
+
     async def sending(self, groupID, userID, message):
+        if groupID not in self._online:
+            self.addConnectedGroup(groupID)
         await self._online[groupID].sending(userID, message)
 
 
@@ -79,14 +84,19 @@ class GroupConnections:
 
         self._connections[userID] = websocket
 
-    def disconnect(self, userID):
+    async def disconnect(self, userID):
         if userID in self._connections:
             ACCOUNT.update(
                 {"uuid": userID},
                 {"$set": {"lastSeen": timestamp()}},
             )
 
+            await self._connections[userID].close()
             del self._connections[userID]
+
+    async def disconnectAll(self):
+        for ws in self._connections.values():
+            await ws.close()
 
     async def sending(self, userID: str, message: GetMessageSchema):
         check = beforeSendCheck(userID, self.groupID, message)
@@ -141,12 +151,15 @@ class SystemConnectionManager:
         await websocket.accept(subprotocol=subprotocol)
         self._connections[userID] = websocket
 
-    def disconnect(self, userID):
-        del self._connections[userID]
+    async def disconnect(self, userID):
+        if userID in self._connections:
+            await self._connections[userID].close()
+            del self._connections[userID]
 
     async def sending(self, userID, payload):
-        ws = self._connections[userID]
-        await ws.send_json(dict(payload))
+        if userID in self._connections:
+            ws = self._connections[userID]
+            await ws.send_json(dict(payload))
 
 
 GCM = GroupConnectionManager()
