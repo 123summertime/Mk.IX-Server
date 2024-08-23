@@ -1,6 +1,6 @@
 import hashlib
-from typing import Union, List
 from datetime import datetime, timezone
+from typing import Union, List
 
 from gridfs import GridFS
 
@@ -8,7 +8,6 @@ from public.const import Database
 from schema.group import GroupSchema
 from schema.storage import StorageSchema, RequestMsgSchema, FileStorageSchema
 from schema.user import UserSchema
-from utils.helper import timestamp
 
 client = Database.CLIENT.value
 
@@ -115,6 +114,6 @@ class CRUD_helpers():
         return info
 
 
-ACCOUNT = DB_CRUD(Database.USER_DB.value, "Account", UserSchema)
-GROUP = DB_CRUD(Database.USER_DB.value, "Group", GroupSchema)
-FS = GridFS_CRUD("File")
+ACCOUNT = DB_CRUD(Database.INFO_DB.value, Database.ACCOUNT_COLLECTION.value, UserSchema)
+GROUP = DB_CRUD(Database.INFO_DB.value, Database.GROUP_COLLECTION.value, GroupSchema)
+FS = GridFS_CRUD(Database.FILE_DB.value)

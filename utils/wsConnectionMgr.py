@@ -1,10 +1,9 @@
 from public.const import Database
-from public.stateCode import CheckerState
 from schema.message import GetMessageSchema, SendMessageSchema, SysMessageSchema
 from schema.storage import StorageSchema
+from utils.checker import beforeSendCheck
 from utils.crud import DB_CRUD, ACCOUNT, GROUP
 from utils.helper import timestamp
-from utils.checker import beforeSendCheck
 from utils.modifier import beforeSendModify
 
 
@@ -72,6 +71,7 @@ class GroupConnections:
             {"_id": 0},
         )
 
+        # 发送离线期间的消息
         for msg in messages:
             await websocket.send_json(SendMessageSchema(
                 time=msg.time,
@@ -125,14 +125,15 @@ class GroupConnections:
             payload=message.payload,
         )
 
-        self._currentGroupCollection.add(StorageSchema(
+        storageMessage = StorageSchema(
             time=message.time,
             type=message.type,
             senderID=message.senderID,
             senderKey=userInfo.lastUpdate,
             payload=message.payload,
-        ).model_dump())
+        )
 
+        self._currentGroupCollection.add(storageMessage.model_dump())
         for ws in self._connections.values():
             await ws.send_json(sendMessage.model_dump())
 
@@ -159,7 +160,7 @@ class SystemConnectionManager:
     async def sending(self, userID, payload):
         if userID in self._connections:
             ws = self._connections[userID]
-            await ws.send_json(dict(payload))
+            await ws.send_json(payload.model_dump())
 
 
 GCM = GroupConnectionManager()

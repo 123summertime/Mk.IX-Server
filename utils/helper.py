@@ -6,18 +6,18 @@ from jose import jwt
 from public.const import Auth
 
 
-def hashPassword(password):
+def hashPassword(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 
-def timestamp():
+def timestamp() -> str:
     return ("{:.3f}".format(datetime.now().timestamp())).replace(".", "")
 
 
-def createAccessToken(data: dict, expiresDelta):
-    encode = data.copy()
+def createAccessToken(uuid, isBot) -> str:
+    encode = {"uuid": uuid, "isBot": isBot}
 
-    if data["bot"]:
+    if isBot:
         encode["exp"] = datetime.utcnow() + timedelta(minutes=Auth.BOT_ACCESS_TOKEN_EXPIRE_MINUTES.value)
     else:
         encode["exp"] = datetime.utcnow() + timedelta(minutes=Auth.USER_ACCESS_TOKEN_EXPIRE_MINUTES.value)
@@ -25,5 +25,3 @@ def createAccessToken(data: dict, expiresDelta):
     token = jwt.encode(encode, Auth.SECRET_KEY.value, algorithm=Auth.ALGORITHM.value)
 
     return token
-
-

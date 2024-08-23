@@ -13,7 +13,7 @@ from utils.helper import createAccessToken
 def getGroupInfo(group: str = Path(...)) -> GroupSchema:
     '''
     从数据库中获取群的信息
-    :param group: 群ID 从路径中获取
+    :param group: 群ID
     :return: 包含除了avatar的群信息
     '''
     groupInfo = GROUP.query(
@@ -44,7 +44,7 @@ def getGroupInfoWithAvatar(group: str = Path(...),
 def getUserInfo(uuid: str = Path(...)) -> UserSchema:
     '''
     从数据库中获取用户的信息
-    :param uuid: 用户uuid 从路径中获取
+    :param uuid: 用户uuid
     :return: 包含除了password, avatar的用户信息
     '''
     userInfo = ACCOUNT.query(
@@ -105,9 +105,6 @@ def checker(token: str = Depends(Auth.OAUTH2.value)):
     # token在6h内过期, 自动续token
     rt = {"refreshToken": ""}
     if datetime.now() <= datetime.fromtimestamp(payload["exp"]) <= datetime.now() + timedelta(hours=6):
-        rt["refreshToken"] = createAccessToken(
-            {"uuid": payload["uuid"], "bot": payload["bot"]},
-            timedelta(minutes=Auth.ACCESS_TOKEN_EXPIRE_MINUTES.value),
-        )
+        rt["refreshToken"] = createAccessToken(payload["uuid"], payload["bot"])
 
     return rt

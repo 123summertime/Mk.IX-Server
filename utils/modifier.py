@@ -1,19 +1,18 @@
 import io
-import json
-from pydub import AudioSegment
-from pydub.playback import play
-
-from utils.crud import FS
-from schema.message import GetMessageSchema, MessagePayload
-from public.stateCode import CheckerState
 from datetime import datetime, timezone
+
+from pydub import AudioSegment
+
+from public.stateCode import CheckerState
+from schema.message import GetMessageSchema
+from utils.crud import FS
 
 
 def forwardFileMessageModifier(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
     hashcode = message.payload.content
     file = FS.query(hashcode)
     if not file:
-        return CheckerState.EXPIRED
+        return CheckerState.NOT_EXIST
 
     FS.update(hashcode, {"uploadDate": datetime.now(timezone.utc)})
 
@@ -29,8 +28,9 @@ def audioFileMessageModifier(userID: str, groupID: str, message: GetMessageSchem
     hashcode = message.payload.content
     file = FS.query(hashcode)
     if not file:
-        return CheckerState.UNKNOWN
+        return CheckerState.NOT_EXIST
 
+    # 将语音分为chunkCount段，获取每段的音量大小，放入meta字段中
     try:
         audio = AudioSegment.from_file(io.BytesIO(file.file))
         chunkCount = min(50, (len(audio) // 1000) + 2)

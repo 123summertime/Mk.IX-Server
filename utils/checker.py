@@ -1,12 +1,12 @@
 import io
-import json
+
+from pydub import AudioSegment
 
 from public.const import Database, Limits
+from public.stateCode import CheckerState
+from schema.message import GetMessageSchema
 from schema.storage import StorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS
-from schema.message import GetMessageSchema, MessagePayload
-from public.stateCode import CheckerState
-from pydub import AudioSegment
 
 
 def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
@@ -17,28 +17,30 @@ def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -
     )
 
     if not getMessage:
-        return CheckerState.EXPIRED
+        return CheckerState.NOT_EXIST
 
+    # 获取自己的信息/被撤回用户的信息/该群的信息
     userObjID = ACCOUNT.query(
         {"uuid": userID},
         {"_id": 1}
-    ).id
+    )
     targetObjID = ACCOUNT.query(
         {"uuid": getMessage.senderID},
         {"_id": 1}
-    ).id
+    )
     targetGroup = GROUP.query(
         {"group": groupID},
         {"owner": 1, "admin": 1}
     )
 
-    if not userObjID or not targetGroup:
+    if not userObjID or not userObjID or not targetGroup:
         return CheckerState.NOT_EXIST
 
-    isOwner = userObjID == targetGroup.owner
-    isAdmin = userObjID in targetGroup.admin
+    isOwner = userObjID.id == targetGroup.owner
+    isAdmin = userObjID.id in targetGroup.admin
 
-    if userObjID == targetObjID or isOwner or (isAdmin and targetObjID != targetGroup.owner):
+    # 1.可以撤回自己的消息 2.群主可以撤回任何人消息 3.管理可以撤回除群主以外的消息
+    if userObjID.id == targetObjID.id or isOwner or (isAdmin and targetObjID.id != targetGroup.owner):
         return CheckerState.OK
     return CheckerState.NO_PERMISSION
 
@@ -47,8 +49,9 @@ def audioMessageChecker(userID: str, groupID: str, message: GetMessageSchema) ->
     hashcode = message.payload.content
     file = FS.query(hashcode)
     if not file:
-        return CheckerState.UNKNOWN
+        return CheckerState.NOT_EXIST
 
+    # 音频长度是否在限制以内
     try:
         limit = Limits.GROUP_AUDIO_LENGTH_RANGE.value
         audio = AudioSegment.from_file(io.BytesIO(file.file))
@@ -57,7 +60,6 @@ def audioMessageChecker(userID: str, groupID: str, message: GetMessageSchema) ->
             return CheckerState.LIMIT_EXCEED
         return CheckerState.OK
     except Exception as e:
-        print(e)
         return CheckerState.UNKNOWN
 
 

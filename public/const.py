@@ -14,10 +14,13 @@ class API(Enum):
 
 class Database(Enum):
     CLIENT = pymongo.MongoClient(config['Database']['HOST'], config['Database']['PORT'], maxPoolSize=config['Database']['MAX_POOL_SIZE'])
-    USER_DB = "UserInfo"
+    INFO_DB = "UserInfo"
+    ACCOUNT_COLLECTION = "Account"
+    GROUP_COLLECTION = "Group"
+    FILE_DB = "File"
     STORAGE_DB = "Storage"
     REQUEST_DB = "Request"
-    FRIEND_REQUEST_DB = "Friend"
+    FRIEND_REQUEST_COLLECTION = "Friend"
 
 
 class Auth(Enum):

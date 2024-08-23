@@ -33,12 +33,11 @@ def makeGroup(registerInfo: GroupRegister,
     qaLimit = Limits.GROUP_QA_LENGTH_RANGE.value
 
     if not (nameLimit['MIN'] <= len(name) <= nameLimit['MAX']):
-        raise HTTPException(status_code=400, detail=f"群名长度必须在[{nameMinLength}, {nameMaxLength}]以内")
+        raise HTTPException(status_code=400, detail=f"群名长度必须在[{nameLimit['MIN']}, {nameLimit['MAX']}]以内")
     if (not qaLimit['MIN'] <= len(Q) <= qaLimit['MAX']) or (not qaLimit['MIN'] <= len(A) <= qaLimit['MAX']):
-        raise HTTPException(status_code=400, detail=f"问题和答案长度必须在[{QAMinLength}, {QAMaxLength}]以内")
+        raise HTTPException(status_code=400, detail=f"问题和答案长度必须在[{qaLimit['MIN']}, {qaLimit['MAX']}]以内")
 
     groupID = str(uuid4().int)[::4]
-
     newGroup = GroupSchema(
         group=groupID,
         name=name,
@@ -88,7 +87,7 @@ def getMembersInfo(info: Info = Depends(UserPermission)):
     '''
     groupInfo, _ = info.groupInfo, info.userInfo
 
-    membersInfo = [dict(CRUD_helpers.objectIDtoInfo(i)) for i in groupInfo.user]
+    membersInfo = [CRUD_helpers.objectIDtoInfo(i).model_dump() for i in groupInfo.user]
 
     return {"users": membersInfo}
 
@@ -127,7 +126,7 @@ async def deleteSelf(info: Info = Depends(UserPermission)):
         )
     )
     await GCM.sending(groupInfo.group, userInfo.uuid, removeMessage)
-    GCM.removeUser(groupInfo.group, userInfo.uuid)
+    await GCM.removeUser(groupInfo.group, userInfo.uuid)
 
     return {"detail": "ok"}
 
@@ -142,6 +141,8 @@ async def deleteUser(info: Info = Depends(AdminPermission),
 
     if userInfo.id == targetInfo.id:
         raise HTTPException(status_code=400, detail="不能移除自己")
+    if groupInfo.owner == targetInfo.id:
+        raise HTTPException(status_code=400, detail="不能移除群主")
     if targetInfo.id not in groupInfo.user:
         raise HTTPException(status_code=400, detail=f"{targetInfo.userName} 不在群 {groupInfo.name} 内")
 
@@ -164,7 +165,7 @@ async def deleteUser(info: Info = Depends(AdminPermission),
         )
     )
     await GCM.sending(groupInfo.group, userInfo.uuid, removeMessage)
-    GCM.removeUser(groupInfo.group, targetInfo.uuid)
+    await GCM.removeUser(groupInfo.group, targetInfo.uuid)
 
     return {"detail": "ok"}
 
@@ -175,8 +176,8 @@ def getAdminInfo(groupInfo: GroupSchema = Depends(getGroupInfo)):
     获取群主+管理员信息 无需权限
     '''
     info = {
-        "owner": dict(CRUD_helpers.objectIDtoInfo(groupInfo.owner)),
-        "admin": [dict(CRUD_helpers.objectIDtoInfo(i)) for i in groupInfo.admin]
+        "owner": CRUD_helpers.objectIDtoInfo(groupInfo.owner).model_dump(),
+        "admin": [CRUD_helpers.objectIDtoInfo(i).model_dump() for i in groupInfo.admin]
     }
 
     return info
@@ -235,15 +236,16 @@ def modifyGroupName(newName: Note,
     '''
     修改群名 管理员权限
     '''
+    name = newName.note
     groupInfo, _ = info.groupInfo, info.userInfo
     limit = Limits.GROUP_NAME_LENGTH_RANGE.value
 
-    if not (limit['MIN'] <= len(newName.note) <= limit['MAX']):
-        raise HTTPException(status_code=400, detail=f"群名长度必须在[{nameMinLength}, {nameMaxLength}]以内")
+    if not (limit['MIN'] <= len(name) <= limit['MAX']):
+        raise HTTPException(status_code=400, detail=f"群名长度必须在[{limit['MIN']}, {limit['MAX']}]以内")
 
     GROUP.update(
         {"group": groupInfo.group},
-        {"$set": {"name": newName.note, "lastUpdate": timestamp()}}
+        {"$set": {"name": name, "lastUpdate": timestamp()}}
     )
 
     return {"detail": "ok"}
@@ -263,7 +265,10 @@ def modifyGroupAvatar(newAvatar: Note,
     if len(avatar) > limit['MAX'] * 1400:
         raise HTTPException(status_code=400, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
 
-    img = base64.b64decode(avatar.split(',')[1])
+    try:
+        img = base64.b64decode(avatar.split(',')[1])
+    except Exception:
+        raise HTTPException(status_code=400, detail="无效的图片")
     size = len(img) // 1024
     if not (limit['MIN'] <= size <= limit['MAX']):
         raise HTTPException(status_code=400, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
@@ -352,7 +357,7 @@ async def joinRequest(joinText: Note,
     # 时间单位: ms
     if requestExist \
             and requestExist.state == RequestState.PENDING.value \
-            and int(timestamp()) - int(requestExist.time) < int(Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
+            and int(time) - int(requestExist.time) < int(Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
         raise HTTPException(status_code=400, detail="申请中，等待审核")
 
     sysMessage = SysMessageSchema(
@@ -375,12 +380,11 @@ async def joinRequest(joinText: Note,
         payload=joinText.note,
     )
 
-    reqCollection.add(dict(requestMessage))
+    reqCollection.add(requestMessage.model_dump())
 
     for objID in admins:
         info = CRUD_helpers.objectIDtoInfo(objID)
-        if info.uuid in SCM:
-            await SCM.sending(info.uuid, dict(sysMessage))
+        await SCM.sending(info.uuid, sysMessage.model_dump())
 
     return {"detail": "ok"}
 
@@ -411,8 +415,7 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
             payload=msg.payload
         )
 
-        if userInfo.uuid in SCM:
-            await SCM.sending(userInfo.uuid, sysMessage.model_dump())
+        await SCM.sending(userInfo.uuid, sysMessage.model_dump())
 
 
 @groupRouter.post('/{group}/verify/response')
@@ -456,20 +459,19 @@ async def requestResponse(verdict: bool,
             {"$push": {"user": targetInfo.id}}
         )
         ACCOUNT.update(
-            {"uuid": targetInfo.id},
+            {"uuid": targetInfo.uuid},
             {"$push": {"groups": groupInfo.id}}
         )
 
-        if requestInfo.senderID in SCM:
-            sysMessage = SysMessageSchema(
-                time=timestamp(),
-                type="joined",
-                target=groupInfo.group,
-                state=currentState,
-                payload=groupInfo.name
-            )
-            await SCM.sending(requestInfo.senderID, sysMessage.model_dump())
-
+        # 如果申请发起的用户在线，推送加群成功的消息
+        sysMessage = SysMessageSchema(
+            time=timestamp(),
+            type="joined",
+            target=groupInfo.group,
+            state=currentState,
+            payload=groupInfo.name
+        )
+        await SCM.sending(requestInfo.senderID, sysMessage.model_dump())
     else:
         currentState = (RequestState.REJECTED_BY_OWNER.value
                         if userInfo.id == groupInfo.owner
@@ -480,22 +482,22 @@ async def requestResponse(verdict: bool,
         {"$set": {"state": currentState}}
     )
 
+    # 向所有管理推送审核结果
     sysMessage = SysMessageSchema(
         time=requestInfo.time,
         type=requestInfo.type,
         target=groupInfo.group,
-        targetKey=requestInfo.groupKey,
+        targetKey=requestInfo.targetKey,
         state=currentState,
         senderID=requestInfo.senderID,
         senderKey=requestInfo.senderKey,
         payload=requestInfo.payload
     )
-
     for objID in admins:
         info = CRUD_helpers.objectIDtoInfo(objID)
-        if info.uuid in SCM:
-            await SCM.sending(info.uuid, dict(sysMessage))
+        await SCM.sending(info.uuid, sysMessage.model_dump())
 
+    # 向群中广播加入消息
     joinedMessage = GetMessageSchema(
         time=timestamp(),
         type="system",
@@ -521,8 +523,9 @@ async def groupFileUpload(file: UploadFile = File(...),
     limit = Limits.GROUP_FILE_SIZE_RANGE.value
 
     content = await file.read()
+    size = len(content) // 1024
 
-    if not (limit['MIN'] <= len(content) // 1024 <= limit['MAX']):
+    if not (limit['MIN'] <= size <= limit['MAX']):
         raise HTTPException(status_code=413, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
 
     hashcode = FS.add(content, file.filename, file.content_type, groupInfo.group)
@@ -538,7 +541,6 @@ async def groupFileUpload(file: UploadFile = File(...),
             content=hashcode,
         )
     )
-
     await GCM.sending(groupInfo.group, userInfo.uuid, message)
 
     return {"detail": "ok"}

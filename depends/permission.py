@@ -35,7 +35,7 @@ class checkPermission:
             "userInfo": userInfo
         }
 
-        return Info.parse_obj(info)
+        return Info.model_validate(info)
 
 
 NonePermission = checkPermission(PermissionLevel.NONE)

@@ -51,6 +51,7 @@ async def SystemMessageSender(websocket: WebSocket, userID: str, Sec_Websocket_P
         raise WebSocketException(code=4003, reason="Token已过期")
 
     await SCM.connect(websocket, userID, Authorization)
+
     try:
         while True:
             await websocket.receive_json()
