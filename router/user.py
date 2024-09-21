@@ -34,15 +34,15 @@ def register(registerInfo: Register):
         userName=userName,
         password=hashedPassword,
         avatar=Default.DEFAULT_AVATAR.value,
-        bio="",
+        bio=Default.DEFAULT_BIO.value,
         lastSeen=time,
         lastUpdate=time,
         groups=[],
-    )
+    ).model_dump()
+    del userInfo["id"]
+    ACCOUNT.add(userInfo)
 
-    ACCOUNT.add(userInfo.model_dump())
-    info = {"uuid": userID}
-    return info
+    return {"uuid": userID}
 
 
 @userRouter.post('/token')
@@ -77,7 +77,7 @@ def token(formData: OAuth2PasswordRequestForm = Depends(),
 def check(newToken=Depends(checker)):
     '''
     验证token是否有效
-    :return: 按需刷新token
+    :return: token
     '''
     return newToken
 
@@ -125,11 +125,12 @@ def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
     :return: 用户的lastSeen, bio
     '''
     if userCurrentInfo.uuid in SCM:
-        userCurrentInfo.lastSeen = "Online"
+        userCurrentInfo.lastSeen = "在线"
 
     info = {
         "bio": userCurrentInfo.bio,
         "lastSeen": userCurrentInfo.lastSeen,
+        "lastUpdate": userCurrentInfo.lastUpdate,
     }
 
     return info
@@ -177,7 +178,7 @@ async def friendRequest(reason: Note,
         payload=reason.note,
     )
     reqCollection.add(requestMessage.model_dump())
-    await SCM.sending(targetInfo.uuid, sysMessage.model_dump())
+    await SCM.sending(targetInfo.uuid, sysMessage)
 
     return {"detail": "ok"}
 
@@ -191,7 +192,7 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
     time = timestamp()
     reqCollection = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_COLLECTION.value, RequestMsgSchema)
     messages = reqCollection.queryMany(  # 获取在有效时间内的请求 单位:ms
-        {"target": userInfo.uuid, "time": {"$gt": str(int(time) - Limits.FRIEND_REQUEST_EXPIRE_MINUTES * 60 * 1000)}},
+        {"target": userInfo.uuid, "time": {"$gt": str(int(time) - Limits.FRIEND_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
         {"_id": 0}
     )
 
@@ -206,7 +207,7 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
             senderKey=msg.senderKey,
             payload=msg.payload,
         )
-        await SCM.sending(userInfo.uuid, sysMessage.model_dump())
+        await SCM.sending(userInfo.uuid, sysMessage)
 
 
 @userRouter.post('/{uuid}/verify/response')
@@ -268,8 +269,8 @@ async def requestResponse(verdict: bool,
             state=currentState,
             payload=name
         )
-        await SCM.sending(requestInfo.senderID, sysMessage.model_dump())
-        await SCM.sending(requestInfo.target, sysMessage.model_dump())
+        await SCM.sending(requestInfo.senderID, sysMessage)
+        await SCM.sending(requestInfo.target, sysMessage)
     else:
         currentState = RequestState.REJECTED.value
 
@@ -289,7 +290,7 @@ async def requestResponse(verdict: bool,
         senderKey=requestInfo.senderKey,
         payload=requestInfo.payload
     )
-    await SCM.sending(requestInfo.target, sysMessage.model_dump())
+    await SCM.sending(requestInfo.target, sysMessage)
 
     # 如果好友申请成功，则发送这条消息
     if verdict:

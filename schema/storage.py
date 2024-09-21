@@ -23,7 +23,7 @@ class RequestMsgSchema(BaseModel):
     type: str = ""
     target: str = ""
     targetKey: str = ""
-    state: int = RequestState.PENDING.value
+    state: str = RequestState.PENDING.value
     senderID: str = ""
     senderKey: str = ""
     payload: str = ""

@@ -292,8 +292,9 @@ def joinQuestion(info: Info = Depends(NonePermission)):
         raise HTTPException(status_code=400, detail="已经加入了")
 
     info = {
-        "name": groupInfo.name,
-        "question": list(groupInfo.question.keys())[0]
+        "member": len(groupInfo.user),
+        "question": list(groupInfo.question.keys())[0],
+        "lastUpdate": groupInfo.lastUpdate,
     }
 
     return info
@@ -384,7 +385,7 @@ async def joinRequest(joinText: Note,
 
     for objID in admins:
         info = CRUD_helpers.objectIDtoInfo(objID)
-        await SCM.sending(info.uuid, sysMessage.model_dump())
+        await SCM.sending(info.uuid, sysMessage)
 
     return {"detail": "ok"}
 
@@ -415,7 +416,7 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
             payload=msg.payload
         )
 
-        await SCM.sending(userInfo.uuid, sysMessage.model_dump())
+        await SCM.sending(userInfo.uuid, sysMessage)
 
 
 @groupRouter.post('/{group}/verify/response')
@@ -471,7 +472,7 @@ async def requestResponse(verdict: bool,
             state=currentState,
             payload=groupInfo.name
         )
-        await SCM.sending(requestInfo.senderID, sysMessage.model_dump())
+        await SCM.sending(requestInfo.senderID, sysMessage)
     else:
         currentState = (RequestState.REJECTED_BY_OWNER.value
                         if userInfo.id == groupInfo.owner
@@ -495,19 +496,20 @@ async def requestResponse(verdict: bool,
     )
     for objID in admins:
         info = CRUD_helpers.objectIDtoInfo(objID)
-        await SCM.sending(info.uuid, sysMessage.model_dump())
+        await SCM.sending(info.uuid, sysMessage)
 
     # 向群中广播加入消息
-    joinedMessage = GetMessageSchema(
-        time=timestamp(),
-        type="system",
-        group=groupInfo.group,
-        senderID=userInfo.uuid,
-        payload=MessagePayload(
-            content=f"{targetInfo.userName}加入该群",
+    if verdict:
+        joinedMessage = GetMessageSchema(
+            time=timestamp(),
+            type="system",
+            group=groupInfo.group,
+            senderID=userInfo.uuid,
+            payload=MessagePayload(
+                content=f"{targetInfo.userName}加入该群",
+            )
         )
-    )
-    await GCM.sending(groupInfo.group, userInfo.uuid, joinedMessage)
+        await GCM.sending(groupInfo.group, userInfo.uuid, joinedMessage)
 
     return {"detail": "ok"}
 

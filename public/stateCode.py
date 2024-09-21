@@ -1,17 +1,17 @@
 from enum import Enum
 
 
-# 请求状态 0等待审核 1群主已同意 2群主已拒绝 3管理员已同意 4管理员已拒绝 5用户已同意 6用户已拒绝 7同意 8拒绝
+# 请求状态
 class RequestState(Enum):
-    PENDING = 0
-    ACCEPTED_BY_OWNER = 1
-    REJECTED_BY_OWNER = 2
-    ACCEPTED_BY_ADMIN = 3
-    REJECTED_BY_ADMIN = 4
-    ACCEPTED_BY_USER = 5
-    REJECTED_BY_USER = 6
-    ACCEPTED = 7
-    REJECTED = 8
+    PENDING = "等待审核"
+    ACCEPTED_BY_OWNER = "群主已同意"
+    REJECTED_BY_OWNER = "群主已拒绝"
+    ACCEPTED_BY_ADMIN = "管理员已同意"
+    REJECTED_BY_ADMIN = "管理员已拒绝"
+    ACCEPTED_BY_USER = "用户已同意"
+    REJECTED_BY_USER = "用户已拒绝"
+    ACCEPTED = "已同意"
+    REJECTED = "已拒绝"
 
 
 # 权限等级 0任何人 1群员及以上 2管理员及以上 3仅群主
