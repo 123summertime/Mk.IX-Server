@@ -104,12 +104,20 @@ class GridFS_CRUD():
         )
 
 
-class CRUD_helpers():
+class CrudHelpers():
     @staticmethod
-    def objectIDtoInfo(objID) -> UserSchema:
+    def userObjectIDtoInfo(objID) -> UserSchema:
         info = ACCOUNT.query(
             {"_id": objID},
             {"_id": 0, "uuid": 1, "lastUpdate": 1}
+        )
+        return info
+
+    @staticmethod
+    def groupObjectIDtoInfo(objID) -> GroupSchema:
+        info = GROUP.query(
+            {"_id": objID},
+            {"_id": 0, "group": 1, "lastUpdate": 1}
         )
         return info
 

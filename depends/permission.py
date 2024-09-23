@@ -3,7 +3,7 @@ from fastapi import HTTPException, Depends
 from depends.getInfo import getSelfInfo, getGroupInfo
 from public.stateCode import PermissionLevel
 from schema.group import GroupSchema
-from schema.payload import Info
+from schema.message import Info
 from schema.user import UserSchema
 
 

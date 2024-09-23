@@ -9,7 +9,7 @@ from public.const import API, Auth, Default, Database, Limits
 from public.stateCode import RequestState
 from schema.group import GroupSchema
 from schema.message import SysMessageSchema, MessagePayload, GetMessageSchema
-from schema.payload import Register, Note
+from schema.input import UserRegister, Time, Reason
 from schema.storage import RequestMsgSchema
 from schema.user import UserSchema
 from utils.crud import ACCOUNT, GROUP, DB_CRUD
@@ -20,11 +20,11 @@ userRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
 
 
 @userRouter.post('/register')
-def register(registerInfo: Register):
+def register(userRegister: UserRegister):
     '''
     用户注册
     '''
-    userName, password = registerInfo.userName, registerInfo.password
+    userName, password = userRegister.name, userRegister.password
     hashedPassword = hashPassword(password)
     time = timestamp()
 
@@ -101,7 +101,7 @@ def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     return info
 
 
-@userRouter.get('/profile/{uuid}')
+@userRouter.get('/{uuid}/profile')
 def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
     '''
     获取用户信息
@@ -117,7 +117,31 @@ def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
     return info
 
 
-@userRouter.get('/profile/current/{uuid}')
+@userRouter.get('/{uuid}/newDevice')
+def getNewDeviceID(userInfo: UserSchema = Depends(getSelfInfo)):
+    '''
+    新设备登录
+    '''
+    limit = Limits.MAX_DEVICE.value
+    deviceInfo = userInfo.lastSeen
+    if len(deviceInfo) == limit:
+        earliest = min(deviceInfo.values())
+        for deviceID in deviceInfo:
+            if deviceInfo[deviceID] == earliest:
+                del deviceInfo[deviceID]
+
+    newDeviceID = str(uuid4().hex)[::4]
+    deviceID[newDeviceID] = timestamp()
+
+    ACCOUNT.update(
+        {"uuid": userInfo.uuid},
+        {"$set": {"lastUpdate": deviceInfo}}
+    )
+
+    return {"deviceID": newDeviceID}
+
+
+@userRouter.get('/{uuid}/profile/current')
 def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
     '''
     获取用户当前信息
@@ -137,7 +161,7 @@ def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
 
 
 @userRouter.post('/{uuid}/friend')
-async def friendRequest(reason: Note,
+async def friendRequest(reason: Reason,
                         userInfo: UserSchema = Depends(getSelfInfo),
                         targetInfo: UserSchema = Depends(getUserInfo)):
     '''
@@ -156,7 +180,7 @@ async def friendRequest(reason: Note,
             and int(timestamp()) - int(requestExist.time) < int(Limits.FRIEND_REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
         raise HTTPException(status_code=400, detail="已经申请过了")
     if userInfo.uuid == targetInfo.uuid:
-        raise HTTPException(status_code=400, detail="不能加自己为好友")
+        raise HTTPException(status_code=403, detail="不能加自己为好友")
 
     sysMessage = SysMessageSchema(
         time=time,
@@ -165,7 +189,7 @@ async def friendRequest(reason: Note,
         targetKey=targetInfo.lastUpdate,
         senderID=userInfo.uuid,
         senderKey=userInfo.lastUpdate,
-        payload=reason.note,
+        payload=reason.reason,
     )
 
     requestMessage = RequestMsgSchema(
@@ -175,7 +199,7 @@ async def friendRequest(reason: Note,
         targetKey=targetInfo.lastUpdate,
         senderID=userInfo.uuid,
         senderKey=userInfo.lastUpdate,
-        payload=reason.note,
+        payload=reason.reason,
     )
     reqCollection.add(requestMessage.model_dump())
     await SCM.sending(targetInfo.uuid, sysMessage)
@@ -192,7 +216,7 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
     time = timestamp()
     reqCollection = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_COLLECTION.value, RequestMsgSchema)
     messages = reqCollection.queryMany(  # 获取在有效时间内的请求 单位:ms
-        {"target": userInfo.uuid, "time": {"$gt": str(int(time) - Limits.FRIEND_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
+        {"target": userInfo.uuid, "time": {"$gt": str(int(time) - Limits.REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
         {"_id": 0}
     )
 
@@ -212,12 +236,12 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
 
 @userRouter.post('/{uuid}/verify/response')
 async def requestResponse(verdict: bool,
-                          time: Note,
+                          time: Time,
                           userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     验证好友申请
     '''
-    time = time.note
+    time = time.time
     reqCollection = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_COLLECTION.value, RequestMsgSchema)
     requestInfo = reqCollection.query(
         {"time": time},
@@ -227,11 +251,11 @@ async def requestResponse(verdict: bool,
     if int(time) < int(timestamp()) - Limits.FRIEND_REQUEST_EXPIRE_MINUTES.value * 60 * 1000:
         raise HTTPException(status_code=400, detail="请求已过期")
     if not requestInfo:
-        raise HTTPException(status_code=400, detail="该请求不存在")
+        raise HTTPException(status_code=404, detail="该请求不存在")
     if requestInfo.state != RequestState.PENDING.value:
-        raise HTTPException(status_code=400, detail="已被验证过")
+        raise HTTPException(status_code=403, detail="已被验证过")
     if requestInfo.target != userInfo.uuid:
-        raise HTTPException(status_code=400, detail="?")
+        raise HTTPException(status_code=418, detail="?")
 
     initiator = getUserInfo(requestInfo.senderID)
 

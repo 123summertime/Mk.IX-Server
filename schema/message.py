@@ -1,12 +1,14 @@
 from pydantic import BaseModel
 
 from public.stateCode import RequestState
+from schema.group import GroupSchema
+from schema.user import UserSchema
 
 
 class MessagePayload(BaseModel):
     name: str | None = None
     size: int | None = None
-    content: str = ""
+    content: str
     meta: dict | None = None
 
 
@@ -29,10 +31,15 @@ class SendMessageSchema(BaseModel):
 
 class SysMessageSchema(BaseModel):
     time: str = ""
-    type: str = ""
-    target: str = ""
-    targetKey: str = ""
+    type: str
+    target: str
+    targetKey: str
     state: str = RequestState.PENDING.value
     senderID: str = ""
     senderKey: str = ""
-    payload: str = ""
+    payload: str
+
+
+class Info(BaseModel):
+    groupInfo: GroupSchema
+    userInfo: UserSchema

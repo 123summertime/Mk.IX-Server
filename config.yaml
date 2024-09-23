@@ -15,6 +15,12 @@ Default:
   DEFAULT_BIO: 这个人很神秘，什么也没有写  # 默认用户bio
 
 Limits:
+  AVATAR_SIZE_RANGE:           # 头像大小限制 默认[0, 1024] 单位: KB
+    MIN: 0
+    MAX: 1024
+  REASON_LENGTH_RANGE:         # 申请理由/入群问题回答长度限制 默认[0, 64]
+    MIN: 0
+    MAX: 64
   USER_NAME_LENGTH_RANGE:      # 用户昵称长度限制 默认[1, 16]
     MIN: 1
     MAX: 16
@@ -30,11 +36,9 @@ Limits:
   GROUP_AUDIO_LENGTH_RANGE:    # 语音消息长度限制 默认[0, 50] 单位: 秒
     MIN: 1
     MAX: 50
-  GROUP_AVATAR_SIZE_RANGE:     # 群头像文件大小限制 默认[0, 1024] 单位: KB
-    MIN: 0
-    MAX: 1024
   GROUP_FILE_SIZE_RANGE:       # 群文件大小限制 默认[0, 102400] 单位: KB
     MIN: 0
     MAX: 102400
-  GROUP_REQUEST_EXPIRE_MINUTES: 10080    # 入群申请过期时间 默认10080 单位：分钟
-  FRIEND_REQUEST_EXPIRE_MINUTES: 10080   # 好友申请过期时间 默认10080 单位：分钟
+  REQUEST_EXPIRE_MINUTES: 10080    # 申请过期时间 默认10080 单位：分钟
+  MAX_DEVICE: 6                    # 最大设备数 默认6 (默认最多只能在6台设备上登录，超过优先淘汰最久未登录的设备，如果被淘汰，那么这台设备不会再接收到未登录期间的消息)
+  MAX_ONLINE_DEVICE: 2             # 最大同时在线设备数 默认2

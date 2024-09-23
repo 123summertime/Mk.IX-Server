@@ -1,8 +1,12 @@
+from typing import List, Any
+
+from collections import defaultdict
+
 from public.const import Database
 from schema.message import GetMessageSchema, SendMessageSchema, SysMessageSchema
 from schema.storage import StorageSchema
 from utils.checker import beforeSendCheck
-from utils.crud import DB_CRUD, ACCOUNT, GROUP
+from utils.crud import DB_CRUD, ACCOUNT, GROUP, CrudHelpers
 from utils.helper import timestamp
 from utils.modifier import beforeSendModify
 
@@ -165,3 +169,81 @@ class SystemConnectionManager:
 
 GCM = GroupConnectionManager()
 SCM = SystemConnectionManager()
+
+# ------------------
+
+
+class GroupConnectionManagerV2:
+    def __init__(self, groupID):
+        self.groupID = groupID
+        self._onlineUsers = defaultdict(list)  # K: userID  V: websocket列表
+        self._currentGroupCollection = DB_CRUD(Database.STORAGE_DB.value, self.groupID, StorageSchema)
+
+    async def connected(self, websocket, userID):
+        self._onlineUsers[userID] = websocket
+
+        lastSeen = ACCOUNT.query(
+            {"uuid": userID},
+            {"lastSeen": 1}
+        ).lastSeen
+
+        messages = self._currentGroupCollection.queryMany(
+            {"time": {"$gt": lastSeen}},
+            {"_id": 0},
+        )
+
+        # 发送离线期间的消息
+        for msg in messages:
+            await websocket.send_json(SendMessageSchema(
+                time=msg.time,
+                type=msg.type,
+                group=self.groupID,
+                senderID=msg.senderID,
+                senderKey=msg.senderKey,
+                payload=msg.payload,
+            ).model_dump())
+
+    def disconnect(self, userID):
+        ...
+
+    def groupOnlineUserCount(self):
+        return len(self._onlineUsers)
+
+    def sendingMessage(self, uuid, payload):
+        ...
+
+
+class WebsocketConnectionManager:
+    def __init__(self):
+        self._onlineUsers = dict()   # K: userID  V: websocket
+        self._onlineGroups = dict()  # K: groupID V: GroupConnectionManager
+
+    def __contains__(self, userID):
+        return userID in self._onlineUsers
+
+    async def connect(self, websocket, subprotocol, userID):
+        await websocket.accept(subprotocol=subprotocol)
+        self._onlineUsers[userID] = websocket
+
+        groups = ACCOUNT.query(
+            {"uuid": userID},
+            {"groups": 1}
+        )
+        for groupID in map(CrudHelpers.groupObjectIDtoInfo, groups):
+            if groupID not in self._onlineGroups:
+                self._onlineGroups[groupID] = GroupConnectionManagerV2(groupID)
+            self._onlineGroups[groupID].connected(websocket, userID)
+
+    async def disconnectUser(self, userID):
+        ...
+
+    async def disconnectGroup(self, groupID):
+        ...
+
+    async def sendingGroupMessage(self, userID: str, payload: GetMessageSchema):
+        ...
+
+    async def sendingSystemMessage(self, userID: str, payload: SysMessageSchema):
+        ...
+
+

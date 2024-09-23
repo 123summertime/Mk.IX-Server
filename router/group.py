@@ -7,15 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
 from depends.getInfo import getSelfInfo, getGroupInfo, getGroupInfoWithAvatar, getUserInfo
+from utils.validate import Validate
 from depends.permission import NonePermission, UserPermission, AdminPermission, OwnerPermission
 from public.const import API, Database, Default, Limits
 from public.stateCode import RequestState
 from schema.group import GroupSchema
-from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload
-from schema.payload import GroupQA, GroupRegister, Info, Note
+from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload, Info
+from schema.input import GroupQA, GroupA, GroupRegister, GroupAvatar, Time, Reason, GroupName
 from schema.storage import RequestMsgSchema
 from schema.user import UserSchema
-from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS, CRUD_helpers
+from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS, CrudHelpers
 from utils.helper import timestamp
 from utils.wsConnectionMgr import GCM, SCM
 
@@ -23,20 +24,12 @@ groupRouter = APIRouter(prefix=f"/{API.VERSION.value}/group", tags=['Group'])
 
 
 @groupRouter.post("/register")
-def makeGroup(registerInfo: GroupRegister,
+def makeGroup(groupRegister: GroupRegister,
               userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     创建群
     '''
-    name, Q, A = registerInfo.name, registerInfo.Q, registerInfo.A
-    nameLimit = Limits.GROUP_NAME_LENGTH_RANGE.value
-    qaLimit = Limits.GROUP_QA_LENGTH_RANGE.value
-
-    if not (nameLimit['MIN'] <= len(name) <= nameLimit['MAX']):
-        raise HTTPException(status_code=400, detail=f"群名长度必须在[{nameLimit['MIN']}, {nameLimit['MAX']}]以内")
-    if (not qaLimit['MIN'] <= len(Q) <= qaLimit['MAX']) or (not qaLimit['MIN'] <= len(A) <= qaLimit['MAX']):
-        raise HTTPException(status_code=400, detail=f"问题和答案长度必须在[{qaLimit['MIN']}, {qaLimit['MAX']}]以内")
-
+    name, Q, A = groupRegister.name, groupRegister.Q, groupRegister.A
     groupID = str(uuid4().int)[::4]
     newGroup = GroupSchema(
         group=groupID,
@@ -87,7 +80,7 @@ def getMembersInfo(info: Info = Depends(UserPermission)):
     '''
     groupInfo, _ = info.groupInfo, info.userInfo
 
-    membersInfo = [CRUD_helpers.objectIDtoInfo(i).model_dump() for i in groupInfo.user]
+    membersInfo = [CrudHelpers.userObjectIDtoInfo(i).model_dump() for i in groupInfo.user]
 
     return {"users": membersInfo}
 
@@ -100,7 +93,7 @@ async def deleteSelf(info: Info = Depends(UserPermission)):
     groupInfo, userInfo = info.groupInfo, info.userInfo
 
     if userInfo.id == groupInfo.owner:
-        raise HTTPException(status_code=400, detail="群主不允许退出群，请使用解散群")
+        raise HTTPException(status_code=403, detail="群主不允许退出群，请使用解散群")
 
     if userInfo.id in groupInfo.admin:
         GROUP.update(
@@ -140,11 +133,11 @@ async def deleteUser(info: Info = Depends(AdminPermission),
     groupInfo, userInfo = info.groupInfo, info.userInfo
 
     if userInfo.id == targetInfo.id:
-        raise HTTPException(status_code=400, detail="不能移除自己")
+        raise HTTPException(status_code=403, detail="不能移除自己")
     if groupInfo.owner == targetInfo.id:
-        raise HTTPException(status_code=400, detail="不能移除群主")
+        raise HTTPException(status_code=403, detail="不能移除群主")
     if targetInfo.id not in groupInfo.user:
-        raise HTTPException(status_code=400, detail=f"{targetInfo.userName} 不在群 {groupInfo.name} 内")
+        raise HTTPException(status_code=404, detail=f"{targetInfo.userName} 不在群 {groupInfo.name} 内")
 
     GROUP.update(
         {"group": groupInfo.group},
@@ -176,8 +169,8 @@ def getAdminInfo(groupInfo: GroupSchema = Depends(getGroupInfo)):
     获取群主+管理员信息 无需权限
     '''
     info = {
-        "owner": CRUD_helpers.objectIDtoInfo(groupInfo.owner).model_dump(),
-        "admin": [CRUD_helpers.objectIDtoInfo(i).model_dump() for i in groupInfo.admin]
+        "owner": CrudHelpers.userObjectIDtoInfo(groupInfo.owner).model_dump(),
+        "admin": [CrudHelpers.userObjectIDtoInfo(i).model_dump() for i in groupInfo.admin]
     }
 
     return info
@@ -194,9 +187,9 @@ def admin(operation: bool,
     groupInfo, _ = info.groupInfo, info.userInfo
 
     if groupInfo.owner == targetInfo.id:
-        raise HTTPException(status_code=400, detail="群主不可以设为管理员")
+        raise HTTPException(status_code=403, detail="群主不可以设为管理员")
     if targetInfo.id not in groupInfo.user:
-        raise HTTPException(status_code=400, detail=f"{targetInfo.userName} 不在群 {groupInfo.name} 内")
+        raise HTTPException(status_code=404, detail=f"{targetInfo.userName} 不在群 {groupInfo.name} 内")
 
     if operation:
         if targetInfo.id in groupInfo.admin:
@@ -231,51 +224,30 @@ def getInfo(groupInfo: GroupSchema = Depends(getGroupInfoWithAvatar)):
 
 
 @groupRouter.patch('/{group}/info/name')
-def modifyGroupName(newName: Note,
+def modifyGroupName(newName: GroupName,
                     info: Info = Depends(AdminPermission)):
     '''
     修改群名 管理员权限
     '''
-    name = newName.note
     groupInfo, _ = info.groupInfo, info.userInfo
-    limit = Limits.GROUP_NAME_LENGTH_RANGE.value
-
-    if not (limit['MIN'] <= len(name) <= limit['MAX']):
-        raise HTTPException(status_code=400, detail=f"群名长度必须在[{limit['MIN']}, {limit['MAX']}]以内")
-
     GROUP.update(
         {"group": groupInfo.group},
-        {"$set": {"name": name, "lastUpdate": timestamp()}}
+        {"$set": {"name": newName.name, "lastUpdate": timestamp()}}
     )
 
     return {"detail": "ok"}
 
 
 @groupRouter.patch('/{group}/info/avatar')
-def modifyGroupAvatar(newAvatar: Note,
+def modifyGroupAvatar(newAvatar: GroupAvatar,
                       info: Info = Depends(AdminPermission)):
     '''
     修改群头像 管理员权限
     '''
-    avatar = newAvatar.note
     groupInfo, _ = info.groupInfo, info.userInfo
-    limit = Limits.GROUP_AVATAR_SIZE_RANGE.value
-
-    # 初步判定大小 1KB文件编码后约为1400字符
-    if len(avatar) > limit['MAX'] * 1400:
-        raise HTTPException(status_code=400, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
-
-    try:
-        img = base64.b64decode(avatar.split(',')[1])
-    except Exception:
-        raise HTTPException(status_code=400, detail="无效的图片")
-    size = len(img) // 1024
-    if not (limit['MIN'] <= size <= limit['MAX']):
-        raise HTTPException(status_code=400, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
-
     GROUP.update(
         {"group": groupInfo.group},
-        {"$set": {"avatar": avatar, "lastUpdate": timestamp()}}
+        {"$set": {"avatar": newAvatar.avatar, "lastUpdate": timestamp()}}
     )
 
     return {"detail": "ok"}
@@ -284,12 +256,12 @@ def modifyGroupAvatar(newAvatar: Note,
 @groupRouter.get("/{group}/verify/question")
 def joinQuestion(info: Info = Depends(NonePermission)):
     '''
-    获取入群问题 无权限
+    获取群人数及入群问题 无权限
     '''
     groupInfo, userInfo = info.groupInfo, info.userInfo
 
     if groupInfo.id in userInfo.groups:
-        raise HTTPException(status_code=400, detail="已经加入了")
+        raise HTTPException(status_code=403, detail="已经加入了")
 
     info = {
         "member": len(groupInfo.user),
@@ -301,7 +273,7 @@ def joinQuestion(info: Info = Depends(NonePermission)):
 
 
 @groupRouter.post("/{group}/verify/answer")
-async def join(answer: GroupQA,
+async def join(answer: GroupA,
                info: Info = Depends(NonePermission)):
     '''
     通过回答问题加入群聊 无权限
@@ -309,7 +281,7 @@ async def join(answer: GroupQA,
     groupInfo, userInfo = info.groupInfo, info.userInfo
 
     if groupInfo.id in userInfo.groups:
-        raise HTTPException(status_code=400, detail="已经加入了")
+        raise HTTPException(status_code=403, detail="已经加入了")
     if answer.A != list(groupInfo.question.values())[0]:
         raise HTTPException(status_code=400, detail="答案错误")
 
@@ -337,7 +309,7 @@ async def join(answer: GroupQA,
 
 
 @groupRouter.post('/{group}/verify/request')
-async def joinRequest(joinText: Note,
+async def joinRequest(reason: Reason,
                       info: Info = Depends(NonePermission)):
     '''
     入群申请 非群员权限
@@ -348,7 +320,7 @@ async def joinRequest(joinText: Note,
     admins = groupInfo.admin + [groupInfo.owner]
 
     if groupInfo.id in userInfo.groups:
-        raise HTTPException(status_code=400, detail="已经加入了该群")
+        raise HTTPException(status_code=403, detail="已经加入了该群")
 
     requestExist = reqCollection.query(
         {"senderID": userInfo.uuid},
@@ -368,7 +340,7 @@ async def joinRequest(joinText: Note,
         targetKey=groupInfo.lastUpdate,
         senderID=userInfo.uuid,
         senderKey=userInfo.lastUpdate,
-        payload=joinText.note,
+        payload=reason.reason,
     )
 
     requestMessage = RequestMsgSchema(
@@ -378,13 +350,13 @@ async def joinRequest(joinText: Note,
         targetKey=groupInfo.lastUpdate,
         senderID=userInfo.uuid,
         senderKey=userInfo.lastUpdate,
-        payload=joinText.note,
+        payload=reason.reason,
     )
 
     reqCollection.add(requestMessage.model_dump())
 
     for objID in admins:
-        info = CRUD_helpers.objectIDtoInfo(objID)
+        info = CrudHelpers.userObjectIDtoInfo(objID)
         await SCM.sending(info.uuid, sysMessage)
 
     return {"detail": "ok"}
@@ -400,7 +372,7 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
 
     reqCollection = DB_CRUD(Database.REQUEST_DB.value, groupInfo.group, RequestMsgSchema)
     messages = reqCollection.queryMany(  # 获取在有效时间内的请求 单位:ms
-        {"time": {"$gt": str(int(timestamp()) - Limits.GROUP_REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
+        {"time": {"$gt": str(int(timestamp()) - Limits.REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
         {"_id": 0}
     )
 
@@ -421,13 +393,13 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
 
 @groupRouter.post('/{group}/verify/response')
 async def requestResponse(verdict: bool,
-                          time: Note,
+                          time: Time,
                           info: Info = Depends(AdminPermission)):
     '''
     验证群验证消息，管理员权限
     :param verdict: True通过 False不通过
     '''
-    time = time.note
+    time = time.time
     groupInfo, userInfo = info.groupInfo, info.userInfo
     admins = groupInfo.admin + [groupInfo.owner]
 
@@ -495,7 +467,7 @@ async def requestResponse(verdict: bool,
         payload=requestInfo.payload
     )
     for objID in admins:
-        info = CRUD_helpers.objectIDtoInfo(objID)
+        info = CrudHelpers.userObjectIDtoInfo(objID)
         await SCM.sending(info.uuid, sysMessage)
 
     # 向群中广播加入消息

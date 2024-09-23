@@ -14,7 +14,7 @@ class RequestState(Enum):
     REJECTED = "已拒绝"
 
 
-# 权限等级 0任何人 1群员及以上 2管理员及以上 3仅群主
+# 权限等级 任何人 群员及以上 管理员及以上 仅群主
 class PermissionLevel(Enum):
     NONE = 0
     USER = 1
