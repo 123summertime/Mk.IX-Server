@@ -1,4 +1,3 @@
-import base64
 import io
 from urllib.parse import quote
 from uuid import uuid4
@@ -7,13 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 
 from depends.getInfo import getSelfInfo, getGroupInfo, getGroupInfoWithAvatar, getUserInfo
-from utils.validate import Validate
-from depends.permission import NonePermission, UserPermission, AdminPermission, OwnerPermission
+from depends.permission import Permission, TargetValidate, CheckPermission
 from public.const import API, Database, Default, Limits
 from public.stateCode import RequestState
-from schema.group import GroupSchema
-from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload, Info
-from schema.input import GroupQA, GroupA, GroupRegister, GroupAvatar, Time, Reason, GroupName
+from schema.group import GroupSchema, Info
+from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload
+from schema.input import GroupA, GroupRegister, GroupAvatar, Time, Reason, GroupName
 from schema.storage import RequestMsgSchema
 from schema.user import UserSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS, CrudHelpers
@@ -25,10 +23,11 @@ groupRouter = APIRouter(prefix=f"/{API.VERSION.value}/group", tags=['Group'])
 
 @groupRouter.post("/register")
 def makeGroup(groupRegister: GroupRegister,
-              userInfo: UserSchema = Depends(getSelfInfo)):
+              info: Info = Depends(CheckPermission(Permission.notLimit))):
     '''
     创建群
     '''
+    userInfo = info.userInfo
     name, Q, A = groupRegister.name, groupRegister.Q, groupRegister.A
     groupID = str(uuid4().int)[::4]
     newGroup = GroupSchema(
@@ -53,11 +52,11 @@ def makeGroup(groupRegister: GroupRegister,
 
 
 @groupRouter.delete('/{group}')
-async def deleteGroup(info: Info = Depends(OwnerPermission)):
+async def deleteGroup(info: Info = Depends(CheckPermission(Permission.owner))):
     '''
     解散群 仅群主可用
     '''
-    groupInfo, userInfo = info.groupInfo, info.userInfo
+    groupInfo = info.groupInfo
 
     for objID in groupInfo.user:
         ACCOUNT.update(
@@ -74,26 +73,23 @@ async def deleteGroup(info: Info = Depends(OwnerPermission)):
 
 
 @groupRouter.get('/{group}/members')
-def getMembersInfo(info: Info = Depends(UserPermission)):
+def getMembersInfo(info: Info = Depends(CheckPermission(Permission.member))):
     '''
     获取群成员信息 群员权限
     '''
-    groupInfo, _ = info.groupInfo, info.userInfo
-
+    groupInfo = info.groupInfo
     membersInfo = [CrudHelpers.userObjectIDtoInfo(i).model_dump() for i in groupInfo.user]
 
     return {"users": membersInfo}
 
 
 @groupRouter.delete("/{group}/members/me")
-async def deleteSelf(info: Info = Depends(UserPermission)):
+async def deleteSelf(info: Info = Depends(CheckPermission(Permission.member,
+                                                          Permission.notOwner))):
     '''
     退出群 群员可用 群主除外
     '''
     groupInfo, userInfo = info.groupInfo, info.userInfo
-
-    if userInfo.id == groupInfo.owner:
-        raise HTTPException(status_code=403, detail="群主不允许退出群，请使用解散群")
 
     if userInfo.id in groupInfo.admin:
         GROUP.update(
@@ -125,19 +121,15 @@ async def deleteSelf(info: Info = Depends(UserPermission)):
 
 
 @groupRouter.delete("/{group}/members/{uuid}")
-async def deleteUser(info: Info = Depends(AdminPermission),
-                     targetInfo: UserSchema = Depends(getUserInfo)):
+async def deleteUser(info: Info = Depends(CheckPermission(Permission.admin,
+                                                          TargetValidate.member,
+                                                          TargetValidate.notSelf,
+                                                          TargetValidate.notOwner,
+                                                          TargetValidate.notAdmin))):
     '''
     踢出群，群主/管理员可用
     '''
     groupInfo, userInfo = info.groupInfo, info.userInfo
-
-    if userInfo.id == targetInfo.id:
-        raise HTTPException(status_code=403, detail="不能移除自己")
-    if groupInfo.owner == targetInfo.id:
-        raise HTTPException(status_code=403, detail="不能移除群主")
-    if targetInfo.id not in groupInfo.user:
-        raise HTTPException(status_code=404, detail=f"{targetInfo.userName} 不在群 {groupInfo.name} 内")
 
     GROUP.update(
         {"group": groupInfo.group},
@@ -164,32 +156,29 @@ async def deleteUser(info: Info = Depends(AdminPermission),
 
 
 @groupRouter.get('/{group}/members/admin')
-def getAdminInfo(groupInfo: GroupSchema = Depends(getGroupInfo)):
+def getAdminInfo(info: Info = Depends(CheckPermission(Permission.notLimit))):
     '''
-    获取群主+管理员信息 无需权限
+    获取群主+管理员信息 需要登录
     '''
-    info = {
+    groupInfo = info.groupInfo
+    res = {
         "owner": CrudHelpers.userObjectIDtoInfo(groupInfo.owner).model_dump(),
         "admin": [CrudHelpers.userObjectIDtoInfo(i).model_dump() for i in groupInfo.admin]
     }
 
-    return info
+    return res
 
 
 @groupRouter.patch("/{group}/members/admin/{uuid}")
 def admin(operation: bool,
-          info: Info = Depends(OwnerPermission),
-          targetInfo: UserSchema = Depends(getUserInfo)):
+          info: Info = Depends(CheckPermission(Permission.owner,
+                                               TargetValidate.notOwner,
+                                               TargetValidate.member))):
     '''
     增加/减少管理员，仅群主可用
     :param operation: True成为管理员 False撤销管理员
     '''
-    groupInfo, _ = info.groupInfo, info.userInfo
-
-    if groupInfo.owner == targetInfo.id:
-        raise HTTPException(status_code=403, detail="群主不可以设为管理员")
-    if targetInfo.id not in groupInfo.user:
-        raise HTTPException(status_code=404, detail=f"{targetInfo.userName} 不在群 {groupInfo.name} 内")
+    groupInfo, targetInfo = info.groupInfo, info.targetInfo
 
     if operation:
         if targetInfo.id in groupInfo.admin:
@@ -225,11 +214,11 @@ def getInfo(groupInfo: GroupSchema = Depends(getGroupInfoWithAvatar)):
 
 @groupRouter.patch('/{group}/info/name')
 def modifyGroupName(newName: GroupName,
-                    info: Info = Depends(AdminPermission)):
+                    info: Info = Depends(CheckPermission(Permission.admin))):
     '''
     修改群名 管理员权限
     '''
-    groupInfo, _ = info.groupInfo, info.userInfo
+    groupInfo = info.groupInfo
     GROUP.update(
         {"group": groupInfo.group},
         {"$set": {"name": newName.name, "lastUpdate": timestamp()}}
@@ -240,11 +229,11 @@ def modifyGroupName(newName: GroupName,
 
 @groupRouter.patch('/{group}/info/avatar')
 def modifyGroupAvatar(newAvatar: GroupAvatar,
-                      info: Info = Depends(AdminPermission)):
+                      info: Info = Depends(CheckPermission(Permission.admin))):
     '''
     修改群头像 管理员权限
     '''
-    groupInfo, _ = info.groupInfo, info.userInfo
+    groupInfo = info.groupInfo
     GROUP.update(
         {"group": groupInfo.group},
         {"$set": {"avatar": newAvatar.avatar, "lastUpdate": timestamp()}}
@@ -254,15 +243,11 @@ def modifyGroupAvatar(newAvatar: GroupAvatar,
 
 
 @groupRouter.get("/{group}/verify/question")
-def joinQuestion(info: Info = Depends(NonePermission)):
+def joinQuestion(info: Info = Depends(CheckPermission(Permission.notMember))):
     '''
-    获取群人数及入群问题 无权限
+    获取群人数及入群问题 非群员权限
     '''
-    groupInfo, userInfo = info.groupInfo, info.userInfo
-
-    if groupInfo.id in userInfo.groups:
-        raise HTTPException(status_code=403, detail="已经加入了")
-
+    groupInfo = info.groupInfo
     info = {
         "member": len(groupInfo.user),
         "question": list(groupInfo.question.keys())[0],
@@ -274,14 +259,12 @@ def joinQuestion(info: Info = Depends(NonePermission)):
 
 @groupRouter.post("/{group}/verify/answer")
 async def join(answer: GroupA,
-               info: Info = Depends(NonePermission)):
+               info: Info = Depends(CheckPermission(Permission.notMember))):
     '''
-    通过回答问题加入群聊 无权限
+    通过回答问题加入群聊 非群员权限
     '''
     groupInfo, userInfo = info.groupInfo, info.userInfo
 
-    if groupInfo.id in userInfo.groups:
-        raise HTTPException(status_code=403, detail="已经加入了")
     if answer.A != list(groupInfo.question.values())[0]:
         raise HTTPException(status_code=400, detail="答案错误")
 
@@ -310,7 +293,7 @@ async def join(answer: GroupA,
 
 @groupRouter.post('/{group}/verify/request')
 async def joinRequest(reason: Reason,
-                      info: Info = Depends(NonePermission)):
+                      info: Info = Depends(CheckPermission(Permission.notMember))):
     '''
     入群申请 非群员权限
     '''
@@ -318,9 +301,6 @@ async def joinRequest(reason: Reason,
     groupInfo, userInfo = info.groupInfo, info.userInfo
     reqCollection = DB_CRUD(Database.REQUEST_DB.value, groupInfo.group, RequestMsgSchema)
     admins = groupInfo.admin + [groupInfo.owner]
-
-    if groupInfo.id in userInfo.groups:
-        raise HTTPException(status_code=403, detail="已经加入了该群")
 
     requestExist = reqCollection.query(
         {"senderID": userInfo.uuid},
@@ -363,7 +343,7 @@ async def joinRequest(reason: Reason,
 
 
 @groupRouter.get('/{group}/verify/request')
-async def queryJoinRequest(info: Info = Depends(AdminPermission)):
+async def queryJoinRequest(info: Info = Depends(CheckPermission(Permission.admin))):
     '''
     获取该群的验证消息 管理员权限
     结果通过ws(SCM)发送
@@ -394,7 +374,7 @@ async def queryJoinRequest(info: Info = Depends(AdminPermission)):
 @groupRouter.post('/{group}/verify/response')
 async def requestResponse(verdict: bool,
                           time: Time,
-                          info: Info = Depends(AdminPermission)):
+                          info: Info = Depends(CheckPermission(Permission.admin))):
     '''
     验证群验证消息，管理员权限
     :param verdict: True通过 False不通过
@@ -489,7 +469,7 @@ async def requestResponse(verdict: bool,
 @groupRouter.post('/{group}/upload')
 async def groupFileUpload(file: UploadFile = File(...),
                           fileType: str = Form(...),
-                          info: Info = Depends(UserPermission)):
+                          info: Info = Depends(CheckPermission(Permission.member))):
     '''
     上传文件
     '''
@@ -523,7 +503,7 @@ async def groupFileUpload(file: UploadFile = File(...),
 @groupRouter.get('/{group}/download/{hashcode}')
 def downloadFile(group: str,
                  hashcode: str,
-                 info: Info = Depends(UserPermission)):
+                 info: Info = Depends(CheckPermission(Permission.member))):
 
     file = FS.query(hashcode)
     if not file:

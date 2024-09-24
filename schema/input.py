@@ -1,6 +1,6 @@
 from pydantic import BaseModel, validator
 
-from utils.validate import Validate
+from depends.inputValidate import InputValidate
 from public.const import Limits
 
 
@@ -11,11 +11,11 @@ class UserRegister(BaseModel):
 
     @validator('name')
     def validateUserName(cls, s):
-        return Validate.validateStringLength(s, Limits.USER_NAME_LENGTH_RANGE, "昵称")
+        return InputValidate.validateStringLength(s, Limits.USER_NAME_LENGTH_RANGE, "昵称")
 
     @validator('password')
     def validatePassword(cls, s):
-        return Validate.validateStringLength(s, Limits.USER_PASSWORD_LENGTH_RANGE, "密码")
+        return InputValidate.validateStringLength(s, Limits.USER_PASSWORD_LENGTH_RANGE, "密码")
 
 
 class GroupA(BaseModel):
@@ -23,7 +23,7 @@ class GroupA(BaseModel):
 
     @validator('A')
     def validateA(cls, s):
-        return Validate.validateStringLength(s, Limits.REASON_LENGTH_RANGE, "回答")
+        return InputValidate.validateStringLength(s, Limits.REASON_LENGTH_RANGE, "回答")
 
 
 class GroupQA(GroupA):
@@ -31,7 +31,7 @@ class GroupQA(GroupA):
 
     @validator('Q')
     def validateQ(cls, s):
-        return Validate.validateStringLength(s, Limits.GROUP_QA_LENGTH_RANGE, "问题")
+        return InputValidate.validateStringLength(s, Limits.GROUP_QA_LENGTH_RANGE, "问题")
 
 
 class GroupRegister(GroupQA):
@@ -39,7 +39,7 @@ class GroupRegister(GroupQA):
 
     @validator('name')
     def validateName(cls, s):
-        return Validate.validateStringLength(s, Limits.GROUP_NAME_LENGTH_RANGE, "群名")
+        return InputValidate.validateStringLength(s, Limits.GROUP_NAME_LENGTH_RANGE, "群名")
 
 
 class GroupName(BaseModel):
@@ -47,7 +47,7 @@ class GroupName(BaseModel):
 
     @validator('name')
     def validateName(cls, s):
-        return Validate.validateStringLength(s, Limits.GROUP_NAME_LENGTH_RANGE, "群名")
+        return InputValidate.validateStringLength(s, Limits.GROUP_NAME_LENGTH_RANGE, "群名")
 
 
 class GroupAvatar(BaseModel):
@@ -55,7 +55,7 @@ class GroupAvatar(BaseModel):
 
     @validator('avatar')
     def validateName(cls, s):
-        return Validate.validateImageSize(s, Limits.AVATAR_SIZE_RANGE, "头像")
+        return InputValidate.validateImageSize(s, Limits.AVATAR_SIZE_RANGE, "头像")
 
 
 class Reason(BaseModel):
@@ -63,7 +63,7 @@ class Reason(BaseModel):
 
     @validator('reason')
     def validateName(cls, s):
-        return Validate.validateStringLength(s, Limits.REASON_LENGTH_RANGE, "申请理由")
+        return InputValidate.validateStringLength(s, Limits.REASON_LENGTH_RANGE, "申请理由")
 
 
 class Time(BaseModel):
@@ -71,4 +71,4 @@ class Time(BaseModel):
 
     @validator('time')
     def validateName(cls, s):
-        return Validate.validateStringLength(s, Limits.TIME_LENGTH_RANGE, "时间")
+        return InputValidate.validateStringLength(s, Limits.TIME_LENGTH_RANGE, "时间")

@@ -1,8 +1,6 @@
 from pydantic import BaseModel
 
 from public.stateCode import RequestState
-from schema.group import GroupSchema
-from schema.user import UserSchema
 
 
 class MessagePayload(BaseModel):
@@ -38,8 +36,3 @@ class SysMessageSchema(BaseModel):
     senderID: str = ""
     senderKey: str = ""
     payload: str
-
-
-class Info(BaseModel):
-    groupInfo: GroupSchema
-    userInfo: UserSchema

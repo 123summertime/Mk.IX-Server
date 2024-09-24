@@ -10,12 +10,15 @@ from utils.crud import ACCOUNT, GROUP
 from utils.helper import createAccessToken
 
 
-def getGroupInfo(group: str = Path(...)) -> GroupSchema:
+def getGroupInfo(group: str = None) -> GroupSchema | None:
     '''
     从数据库中获取群的信息
     :param group: 群ID
     :return: 包含除了avatar的群信息
     '''
+    if not group:
+        return None
+
     groupInfo = GROUP.query(
         {"group": group},
         {"avatar": 0}
@@ -41,12 +44,15 @@ def getGroupInfoWithAvatar(group: str = Path(...),
     return others
 
 
-def getUserInfo(uuid: str = Path(...)) -> UserSchema:
+def getUserInfo(uuid: str = None) -> UserSchema | None:
     '''
     从数据库中获取用户的信息
     :param uuid: 用户uuid
     :return: 包含除了password, avatar的用户信息
     '''
+    if not uuid:
+        return None
+
     userInfo = ACCOUNT.query(
         {"uuid": uuid},
         {"password": 0, "avatar": 0},

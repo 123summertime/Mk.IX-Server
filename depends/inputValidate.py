@@ -6,7 +6,7 @@ from public.const import Limits
 
 
 # 验证用户的输入是否符合限制
-class Validate:
+class InputValidate:
     @staticmethod
     def validateStringLength(s: str, limit: Limits, name: str):
         limit = limit.value
@@ -27,3 +27,11 @@ class Validate:
         if not (limit['MIN'] <= len(imageDecode) // 1024 <= limit['MAX']):
             raise HTTPException(status_code=400, detail=f"图片大小必须在{limit['MIN']}KB至{limit['MAX']}]KB之间")
         return image
+
+    @staticmethod
+    def validateFileSize():
+        ...
+
+    @staticmethod
+    def validateAudioLength():
+        ...
