@@ -18,6 +18,6 @@ class GroupSchema(BaseModel):
 
 
 class Info(BaseModel):
-    groupInfo: GroupSchema
+    groupInfo: GroupSchema | None
     userInfo: UserSchema
     targetInfo: UserSchema | None

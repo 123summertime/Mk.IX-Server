@@ -3,14 +3,15 @@ from pydantic import BaseModel, validator
 from depends.inputValidate import InputValidate
 from public.const import Limits
 
+# 处理用户简单数据类型的Model
 
-# User
+
 class UserRegister(BaseModel):
     name: str
     password: str
 
     @validator('name')
-    def validateUserName(cls, s):
+    def validateName(cls, s):
         return InputValidate.validateStringLength(s, Limits.USER_NAME_LENGTH_RANGE, "昵称")
 
     @validator('password')
@@ -54,7 +55,7 @@ class GroupAvatar(BaseModel):
     avatar: str
 
     @validator('avatar')
-    def validateName(cls, s):
+    def validateAvatar(cls, s):
         return InputValidate.validateImageSize(s, Limits.AVATAR_SIZE_RANGE, "头像")
 
 
@@ -62,7 +63,7 @@ class Reason(BaseModel):
     reason: str
 
     @validator('reason')
-    def validateName(cls, s):
+    def validateReason(cls, s):
         return InputValidate.validateStringLength(s, Limits.REASON_LENGTH_RANGE, "申请理由")
 
 
@@ -70,5 +71,5 @@ class Time(BaseModel):
     time: str
 
     @validator('time')
-    def validateName(cls, s):
+    def validateTime(cls, s):
         return InputValidate.validateStringLength(s, Limits.TIME_LENGTH_RANGE, "时间")

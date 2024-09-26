@@ -115,5 +115,4 @@ class CheckPermission:
             "userInfo": userInfo,
             "targetInfo": targetInfo,
         }
-
         return Info.model_validate(info)

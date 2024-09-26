@@ -62,9 +62,12 @@ class GridFS_CRUD():
             {'hash': hashcode}
         )
         if exist:
-            self.update(hashcode, {"uploadDate": datetime.now(timezone.utc)})
+            self.update(hashcode, {
+                "$set": {"uploadDate": datetime.now(timezone.utc)},
+                "$push": {"group": group},
+            })
         else:
-            self._fs.put(file, filename=filename, hash=hashcode, type=contentType, group=group)
+            self._fs.put(file, filename=filename, hash=hashcode, type=contentType, group=[group])
 
         return hashcode
 
@@ -89,7 +92,7 @@ class GridFS_CRUD():
             "file": self._fs.get(file['_id']).read()
         }
 
-        return FileStorageSchema.parse_obj(info)
+        return FileStorageSchema.model_validate(info)
 
     def update(self, hashcode, ukv):
         file = self._db.fs.files.find_one(
@@ -100,7 +103,7 @@ class GridFS_CRUD():
 
         self._db.fs.files.update_one(
             {'_id': file["_id"]},
-            {'$set': ukv}
+            ukv,
         )
 
 

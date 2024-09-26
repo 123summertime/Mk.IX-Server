@@ -1,5 +1,3 @@
-from datetime import datetime, timedelta
-
 from fastapi import HTTPException, Depends, Path
 from jose import JWTError, jwt
 

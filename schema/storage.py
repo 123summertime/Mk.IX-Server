@@ -1,7 +1,9 @@
+from typing import List
+
 from pydantic import BaseModel
 
-from schema.message import MessagePayload
 from public.stateCode import RequestState
+from schema.message import MessagePayload
 
 
 class StorageSchema(BaseModel):
@@ -15,6 +17,7 @@ class StorageSchema(BaseModel):
 class FileStorageSchema(BaseModel):
     name: str
     type: str
+    group: List[str] = []
     file: bytes
 
 

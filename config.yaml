@@ -33,7 +33,7 @@ Limits:
   GROUP_QA_LENGTH_RANGE:       # 入群问题长度限制 默认[0, 32]
     MIN: 0
     MAX: 32
-  GROUP_AUDIO_LENGTH_RANGE:    # 语音消息长度限制 默认[0, 50] 单位: 秒
+  GROUP_AUDIO_LENGTH_RANGE:    # 语音消息长度限制 默认[1, 50] 单位: 秒
     MIN: 1
     MAX: 50
   GROUP_FILE_SIZE_RANGE:       # 群文件大小限制 默认[0, 102400] 单位: KB

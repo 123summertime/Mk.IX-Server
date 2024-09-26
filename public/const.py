@@ -25,6 +25,7 @@ class Database(Enum):
     FILE_DB = "File"
     STORAGE_DB = "Storage"
     REQUEST_DB = "Request"
+    GROUP_REQUEST_COLLECTION = "Group"
     FRIEND_REQUEST_COLLECTION = "Friend"
 
 
@@ -56,3 +57,4 @@ class Limits(Enum):
     MAX_ONLINE_DEVICE = limits['MAX_ONLINE_DEVICE']
 
     TIME_LENGTH_RANGE = {"MIN": 13, "MAX": 13}  # 时间戳必须是13位
+    FILETYPE = {"file", "audio"}  # 允许上传的文件类型

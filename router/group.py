@@ -2,18 +2,20 @@ import io
 from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from depends.getInfo import getSelfInfo, getGroupInfo, getGroupInfoWithAvatar, getUserInfo
+from depends.getInfo import getGroupInfoWithAvatar
+from depends.inputValidate import InputValidate
+from depends.outputValidate import OutputValidate
 from depends.permission import Permission, TargetValidate, CheckPermission
 from public.const import API, Database, Default, Limits
 from public.stateCode import RequestState
+from schema.file import FileInput
 from schema.group import GroupSchema, Info
-from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload
 from schema.input import GroupA, GroupRegister, GroupAvatar, Time, Reason, GroupName
-from schema.storage import RequestMsgSchema
-from schema.user import UserSchema
+from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload
+from schema.storage import RequestMsgSchema, FileStorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS, CrudHelpers
 from utils.helper import timestamp
 from utils.wsConnectionMgr import GCM, SCM
@@ -467,22 +469,14 @@ async def requestResponse(verdict: bool,
 
 
 @groupRouter.post('/{group}/upload')
-async def groupFileUpload(file: UploadFile = File(...),
-                          fileType: str = Form(...),
-                          info: Info = Depends(CheckPermission(Permission.member))):
+async def groupFileUpload(info: Info = Depends(CheckPermission(Permission.member)),
+                          fileInput: FileInput = Depends(InputValidate.validateInputFile)):
     '''
     上传文件
     '''
+    fileName, fileType, content = fileInput.fileName, fileInput.fileType, fileInput.content
     groupInfo, userInfo = info.groupInfo, info.userInfo
-    limit = Limits.GROUP_FILE_SIZE_RANGE.value
-
-    content = await file.read()
-    size = len(content) // 1024
-
-    if not (limit['MIN'] <= size <= limit['MAX']):
-        raise HTTPException(status_code=413, detail=f"文件大小必须在[{limit['MIN']}, {limit['MAX']}]KB以内")
-
-    hashcode = FS.add(content, file.filename, file.content_type, groupInfo.group)
+    hashcode = FS.add(content, fileName, fileType, groupInfo.group)
 
     message = GetMessageSchema(
         time=timestamp(),
@@ -490,7 +484,7 @@ async def groupFileUpload(file: UploadFile = File(...),
         group=groupInfo.group,
         senderID=userInfo.uuid,
         payload=MessagePayload(
-            name=file.filename,
+            name=fileName,
             size=len(content),
             content=hashcode,
         )
@@ -501,14 +495,8 @@ async def groupFileUpload(file: UploadFile = File(...),
 
 
 @groupRouter.get('/{group}/download/{hashcode}')
-def downloadFile(group: str,
-                 hashcode: str,
-                 info: Info = Depends(CheckPermission(Permission.member))):
-
-    file = FS.query(hashcode)
-    if not file:
-        return HTTPException(status_code=400, detail=f"文件不存在或已过期")
-
+def downloadFile(info: Info = Depends(CheckPermission(Permission.member)),
+                 file: FileStorageSchema = Depends(OutputValidate.validateFileExists)):
     res = StreamingResponse(io.BytesIO(file.file), media_type=file.type)
     res.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file.name)}"
     res.headers["Content-Length"] = str(len(file.file))
