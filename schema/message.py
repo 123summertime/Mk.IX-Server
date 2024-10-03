@@ -30,8 +30,8 @@ class SendMessageSchema(BaseModel):
 class SysMessageSchema(BaseModel):
     time: str = ""
     type: str
-    target: str
-    targetKey: str
+    target: str = ""
+    targetKey: str = ""
     state: str = RequestState.PENDING.value
     senderID: str = ""
     senderKey: str = ""

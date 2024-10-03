@@ -1,22 +1,21 @@
 from fastapi import HTTPException, Depends, Path
 from jose import JWTError, jwt
 
-from public.const import Auth
+from public.const import Auth, Limits
 from schema.group import GroupSchema
 from schema.user import UserSchema
-from utils.crud import ACCOUNT, GROUP
-from utils.helper import createAccessToken
+from schema.storage import RequestMsgSchema
+from utils.crud import ACCOUNT, GROUP, GROUP_REQUEST, FRIEND_REQUEST
+from utils.helper import createAccessToken, timestamp
+from public.stateCode import RequestState
 
 
-def getGroupInfo(group: str = None) -> GroupSchema | None:
+def getGroupInfo(group: str = Path(...)) -> GroupSchema:
     '''
     从数据库中获取群的信息
     :param group: 群ID
     :return: 包含除了avatar的群信息
     '''
-    if not group:
-        return None
-
     groupInfo = GROUP.query(
         {"group": group},
         {"avatar": 0}
@@ -42,15 +41,12 @@ def getGroupInfoWithAvatar(group: str = Path(...),
     return others
 
 
-def getUserInfo(uuid: str = None) -> UserSchema | None:
+def getUserInfo(uuid: str = Path(...)) -> UserSchema:
     '''
     从数据库中获取用户的信息
     :param uuid: 用户uuid
     :return: 包含除了password, avatar的用户信息
     '''
-    if not uuid:
-        return None
-
     userInfo = ACCOUNT.query(
         {"uuid": uuid},
         {"password": 0, "avatar": 0},
@@ -108,3 +104,41 @@ def checker(token: str = Depends(Auth.OAUTH2.value)):
 
     newToken = {"refreshToken": createAccessToken(payload["uuid"], payload["isBot"])}
     return newToken
+
+
+def getSelfRequest(userInfo: UserSchema = Depends(getSelfInfo),
+                   groupInfo: GroupSchema = Depends(getGroupInfo)) -> RequestMsgSchema | None:
+    requestInfo = GROUP_REQUEST.query(
+        {"senderID": userInfo.uuid, "target": groupInfo.group},
+        {"_id": 0}
+    )
+
+    # 排除过期请求
+    if requestInfo and int(timestamp()) - int(requestInfo.time) > int(Limits.REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
+        return None
+    return requestInfo
+
+
+def getUserRequest(time: str = Path(...)) -> RequestMsgSchema | None:
+    requestInfo = GROUP_REQUEST.query(
+        {"time": time},
+        {"_id": 0}
+    )
+
+    # 排除过期请求
+    if requestInfo and int(timestamp()) - int(time) > int(Limits.REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
+        raise None
+    return requestInfo
+
+
+def getRequest(userInfo: UserSchema,
+               isGroupRequest: bool,
+               target: str = None,
+               time: str = None) -> RequestMsgSchema | None:
+    collection = GROUP_REQUEST if isGroupRequest else FRIEND_REQUEST
+    query = {"time": time} if time else {"senderID": userInfo.uuid, "target": target}
+    res = collection.queryMany(query, {"_id": 0})
+    for req in res:
+        if req.state == RequestState.PENDING.value:
+            return req
+    return None

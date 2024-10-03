@@ -11,7 +11,7 @@ def hashPassword(password: str) -> str:
     return hashlib.sha256(withSalt.encode()).hexdigest()
 
 
-def timestamp() -> str:
+def timestamp() -> str:  # ms
     return ("{:.3f}".format(datetime.now().timestamp())).replace(".", "")
 
 

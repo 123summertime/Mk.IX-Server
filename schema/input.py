@@ -67,9 +67,9 @@ class Reason(BaseModel):
         return InputValidate.validateStringLength(s, Limits.REASON_LENGTH_RANGE, "申请理由")
 
 
-class Time(BaseModel):
-    time: str
-
-    @validator('time')
-    def validateTime(cls, s):
-        return InputValidate.validateStringLength(s, Limits.TIME_LENGTH_RANGE, "时间")
+# class Time(BaseModel):
+#     time: str | None = None
+#
+#     @validator('time')
+#     def validateTime(cls, s):
+#         return InputValidate.validateStringLength(s, Limits.TIME_LENGTH_RANGE, "时间")

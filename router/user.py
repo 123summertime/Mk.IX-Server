@@ -1,18 +1,20 @@
 from datetime import timedelta
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.security import OAuth2PasswordRequestForm
 
 from depends.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
+from depends.checkPermission import CheckRequest, RequestValidate
 from public.const import API, Auth, Default, Database, Limits
 from public.stateCode import RequestState
 from schema.group import GroupSchema
-from schema.input import UserRegister, Time, Reason
+from schema.input import UserRegister, Reason
 from schema.message import SysMessageSchema, MessagePayload, GetMessageSchema
 from schema.storage import RequestMsgSchema
+from schema.group import Info
 from schema.user import UserSchema
-from utils.crud import ACCOUNT, GROUP, DB_CRUD
+from utils.crud import ACCOUNT, GROUP, DB_CRUD, FRIEND_REQUEST
 from utils.helper import hashPassword, timestamp, createAccessToken
 from utils.wsConnectionMgr import SCM, GCM
 
@@ -160,27 +162,21 @@ def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
     return info
 
 
-@userRouter.post('/{uuid}/friend')
+@userRouter.post('/{uuid}/verify/request')
 async def friendRequest(reason: Reason,
-                        userInfo: UserSchema = Depends(getSelfInfo),
-                        targetInfo: UserSchema = Depends(getUserInfo)):
+                        info: Info = Depends(
+                            lambda userInfo=Depends(getSelfInfo), uuid=Path(...): CheckRequest(
+                                userInfo=userInfo,
+                                isGroupRequest=False,
+                                uuid=uuid,
+                                checkers=[RequestValidate.notExist],
+                            )()
+                        )):
     '''
     发送加好友请求
     '''
     time = timestamp()
-    reqCollection = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_COLLECTION.value, RequestMsgSchema)
-
-    requestExist = reqCollection.query(
-        {"senderID": userInfo.uuid},
-        {"time": 1, "state": 1}
-    )
-
-    if requestExist \
-            and requestExist.state == RequestState.PENDING.value \
-            and int(timestamp()) - int(requestExist.time) < int(Limits.FRIEND_REQUEST_EXPIRE_MINUTES.value * 60 * 1000):
-        raise HTTPException(status_code=400, detail="已经申请过了")
-    if userInfo.uuid == targetInfo.uuid:
-        raise HTTPException(status_code=403, detail="不能加自己为好友")
+    userInfo, targetInfo = info.userInfo, info.targetInfo
 
     sysMessage = SysMessageSchema(
         time=time,
@@ -191,18 +187,16 @@ async def friendRequest(reason: Reason,
         senderKey=userInfo.lastUpdate,
         payload=reason.reason,
     )
+    await SCM.sending(targetInfo.uuid, sysMessage)
 
     requestMessage = RequestMsgSchema(
         time=time,
         type="friend",
         target=targetInfo.uuid,
-        targetKey=targetInfo.lastUpdate,
         senderID=userInfo.uuid,
-        senderKey=userInfo.lastUpdate,
         payload=reason.reason,
     )
-    reqCollection.add(requestMessage.model_dump())
-    await SCM.sending(targetInfo.uuid, sysMessage)
+    FRIEND_REQUEST.add(requestMessage.model_dump())
 
     return {"detail": "ok"}
 
@@ -234,71 +228,58 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
         await SCM.sending(userInfo.uuid, sysMessage)
 
 
-@userRouter.post('/{uuid}/verify/response')
-async def requestResponse(verdict: bool,
-                          time: Time,
-                          userInfo: UserSchema = Depends(getSelfInfo)):
+@userRouter.post('/{uuid}/verify/request/{time}')
+async def requestAccept(time: str = Path(...),
+                        info: Info = Depends(
+                            lambda userInfo=Depends(getSelfInfo), uuid=Path(...), time=Path(...): CheckRequest(
+                                userInfo=userInfo,
+                                isGroupRequest=False,
+                                uuid=uuid,
+                                time=time,
+                                checkers=[RequestValidate.exist],
+                            )()
+                        )):
     '''
-    验证好友申请
+    通过好友申请
     '''
-    time = time.time
-    reqCollection = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_COLLECTION.value, RequestMsgSchema)
-    requestInfo = reqCollection.query(
-        {"time": time},
-        {"_id": 0}
+    userInfo, targetInfo, requestInfo = info.userInfo, info.targetInfo, info.requestInfo
+    name = f"{targetInfo.userName}和{userInfo.userName}的群聊"
+    currentState = RequestState.ACCEPTED.value
+    groupID = str(uuid4().int)[::4]
+    newGroup = GroupSchema(
+        group=groupID,
+        name=name,
+        avatar=Default.DEFAULT_AVATAR.value,
+        lastUpdate=timestamp(),
+        owner=targetInfo.id,
+        question={},
+        admin=[],
+        user=[targetInfo.id, userInfo.id],
+    ).model_dump()
+    del newGroup["id"]
+
+    groupObjID = GROUP.add(newGroup).inserted_id
+    ACCOUNT.update(
+        {"uuid": targetInfo.uuid},
+        {"$push": {"groups": groupObjID}}
+    )
+    ACCOUNT.update(
+        {"uuid": userInfo.uuid},
+        {"$push": {"groups": groupObjID}}
     )
 
-    if int(time) < int(timestamp()) - Limits.FRIEND_REQUEST_EXPIRE_MINUTES.value * 60 * 1000:
-        raise HTTPException(status_code=400, detail="请求已过期")
-    if not requestInfo:
-        raise HTTPException(status_code=404, detail="该请求不存在")
-    if requestInfo.state != RequestState.PENDING.value:
-        raise HTTPException(status_code=403, detail="已被验证过")
-    if requestInfo.target != userInfo.uuid:
-        raise HTTPException(status_code=418, detail="?")
+    # 向双方推送加好友成功的消息
+    sysMessage = SysMessageSchema(
+        time=timestamp(),
+        type="friended",
+        target=groupID,
+        state=currentState,
+        payload=name
+    )
+    await SCM.sending(requestInfo.senderID, sysMessage)
+    await SCM.sending(requestInfo.target, sysMessage)
 
-    initiator = getUserInfo(requestInfo.senderID)
-
-    if verdict:
-        currentState = RequestState.ACCEPTED.value
-        name = f"{initiator.userName}和{userInfo.userName}的群聊"
-        groupID = str(uuid4().int)[::4]
-        newGroup = GroupSchema(
-            group=groupID,
-            name=name,
-            avatar=Default.DEFAULT_AVATAR.value,
-            lastUpdate=timestamp(),
-            owner=initiator.id,
-            question={},
-            admin=[],
-            user=[initiator.id, userInfo.id],
-        ).model_dump()
-        del newGroup["id"]
-
-        groupObjID = GROUP.add(newGroup).inserted_id
-        ACCOUNT.update(
-            {"uuid": initiator.uuid},
-            {"$push": {"groups": groupObjID}}
-        )
-        ACCOUNT.update(
-            {"uuid": userInfo.uuid},
-            {"$push": {"groups": groupObjID}}
-        )
-
-        # 向双方推送加好友成功的消息
-        sysMessage = SysMessageSchema(
-            time=timestamp(),
-            type="friended",
-            target=groupID,
-            state=currentState,
-            payload=name
-        )
-        await SCM.sending(requestInfo.senderID, sysMessage)
-        await SCM.sending(requestInfo.target, sysMessage)
-    else:
-        currentState = RequestState.REJECTED.value
-
-    reqCollection.update(
+    FRIEND_REQUEST.update(
         {"time": time},
         {"$set": {"state": currentState}}
     )
@@ -307,26 +288,44 @@ async def requestResponse(verdict: bool,
     sysMessage = SysMessageSchema(
         time=requestInfo.time,
         type=requestInfo.type,
-        target=requestInfo.target,
-        targetKey=requestInfo.targetKey,
+        target=userInfo.uuid,
+        targetKey=userInfo.lastUpdate,
         state=currentState,
-        senderID=requestInfo.senderID,
-        senderKey=requestInfo.senderKey,
+        senderID=targetInfo.uuid,
+        senderKey=targetInfo.lastUpdate,
         payload=requestInfo.payload
     )
     await SCM.sending(requestInfo.target, sysMessage)
 
-    # 如果好友申请成功，则发送这条消息
-    if verdict:
-        joinedMessage = GetMessageSchema(
-            time=timestamp(),
-            type="system",
-            group=groupID,
-            senderID=userInfo.uuid,
-            payload=MessagePayload(
-                content="我们已经是好友了，一起来聊天吧！",
-            )
+    joinedMessage = GetMessageSchema(
+        time=timestamp(),
+        type="system",
+        group=groupID,
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            content="我们已经是好友了，一起来聊天吧！",
         )
-        await GCM.sending(groupID, userInfo.uuid, joinedMessage)
+    )
+    await GCM.sending(groupID, userInfo.uuid, joinedMessage)
+
+    return {"detail": "ok"}
+
+
+@userRouter.delete('/{uuid}/verify/request/{time}')
+async def requestReject(time: str = Path(...),
+                        info: Info = Depends(
+                            lambda userInfo=Depends(getSelfInfo), uuid=Path(...), time=Path(...): CheckRequest(
+                                userInfo=userInfo,
+                                isGroupRequest=False,
+                                uuid=uuid,
+                                time=time,
+                                checkers=[RequestValidate.exist],
+                            )()
+                        )):
+    userInfo, targetInfo, requestInfo = info.userInfo, info.targetInfo, info.requestInfo
+    FRIEND_REQUEST.update(
+        {"time": time},
+        {"$set": {"state": RequestState.REJECTED.value}}
+    )
 
     return {"detail": "ok"}

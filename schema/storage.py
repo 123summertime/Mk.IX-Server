@@ -25,8 +25,6 @@ class RequestMsgSchema(BaseModel):
     time: str = ""
     type: str = ""
     target: str = ""
-    targetKey: str = ""
     state: str = RequestState.PENDING.value
     senderID: str = ""
-    senderKey: str = ""
     payload: str = ""

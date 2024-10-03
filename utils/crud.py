@@ -128,3 +128,5 @@ class CrudHelpers():
 ACCOUNT = DB_CRUD(Database.INFO_DB.value, Database.ACCOUNT_COLLECTION.value, UserSchema)
 GROUP = DB_CRUD(Database.INFO_DB.value, Database.GROUP_COLLECTION.value, GroupSchema)
 FS = GridFS_CRUD(Database.FILE_DB.value)
+GROUP_REQUEST = DB_CRUD(Database.REQUEST_DB.value, Database.GROUP_REQUEST_COLLECTION.value, RequestMsgSchema)
+FRIEND_REQUEST = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_COLLECTION.value, RequestMsgSchema)

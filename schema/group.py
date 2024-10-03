@@ -3,6 +3,7 @@ from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 
 from schema.user import UserSchema
+from schema.storage import RequestMsgSchema
 
 
 class GroupSchema(BaseModel):
@@ -18,6 +19,15 @@ class GroupSchema(BaseModel):
 
 
 class Info(BaseModel):
-    groupInfo: GroupSchema | None
-    userInfo: UserSchema
-    targetInfo: UserSchema | None
+    groupInfo: GroupSchema | None = None
+    userInfo: UserSchema | None = None
+    targetInfo: UserSchema | None = None
+    requestInfo: RequestMsgSchema | None = None
+
+    def __or__(self, other):
+        return Info(
+            groupInfo=self.groupInfo or other.groupInfo,
+            userInfo=self.userInfo or other.userInfo,
+            targetInfo=self.targetInfo or other.targetInfo,
+            requestInfo=self.requestInfo or other.requestInfo
+        )
