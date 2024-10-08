@@ -6,10 +6,11 @@ from gridfs import GridFS
 
 from public.const import Database
 from schema.group import GroupSchema
-from schema.storage import StorageSchema, RequestMsgSchema, FileStorageSchema
+from schema.storage import StorageSchema, RequestMsgSchema, FileStorageSchema, WebsocketTokenSchema
 from schema.user import UserSchema
 
 client = Database.CLIENT.value
+T = Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, WebsocketTokenSchema, None]
 
 
 class DB_CRUD():
@@ -35,13 +36,13 @@ class DB_CRUD():
     def update(self, qkv, ukv):
         return self._collection.update_one(qkv, ukv)
 
-    def query(self, kv, ignore={}) -> Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, None]:
+    def query(self, kv, ignore={}) -> T:
         info = self._collection.find_one(kv, ignore)
         if not info:
             return None
         return self._schema.parse_obj(info)
 
-    def queryMany(self, kv, ignore={}) -> List[Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema]] | None:
+    def queryMany(self, kv, ignore={}) -> List[T] | None:
         info = self._collection.find(kv, ignore)
         if not info:
             return None
@@ -130,3 +131,4 @@ GROUP = DB_CRUD(Database.INFO_DB.value, Database.GROUP_COLLECTION.value, GroupSc
 FS = GridFS_CRUD(Database.FILE_DB.value)
 GROUP_REQUEST = DB_CRUD(Database.REQUEST_DB.value, Database.GROUP_REQUEST_COLLECTION.value, RequestMsgSchema)
 FRIEND_REQUEST = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_COLLECTION.value, RequestMsgSchema)
+WS_TOKEN = DB_CRUD(Database.TOKEN_DB.value, Database.WEBSOCKET_TOKEN_COLLECTION.value, WebsocketTokenSchema)

@@ -18,7 +18,7 @@ from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload
 from schema.storage import RequestMsgSchema, FileStorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS, CrudHelpers, GROUP_REQUEST
 from utils.helper import timestamp
-from utils.wsConnectionMgr import GCM, SCM
+from utils.wsConnectionMgr import GCM, SCM, WCM
 
 groupRouter = APIRouter(prefix=f"/{API.VERSION.value}/group", tags=['Group'])
 
@@ -69,7 +69,8 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
     GROUP.delete(
         {"group": groupInfo.group}
     )
-    await GCM.removeGroup(groupInfo.group)
+    # await GCM.removeGroup(groupInfo.group)
+    await WCM.disconnectGroup(groupInfo.group)
 
     return {"detail": "ok"}
 
@@ -112,11 +113,14 @@ async def deleteSelf(info: Info = Depends(CheckPermission(PermissionValidate.mem
         group=groupInfo.group,
         senderID=userInfo.uuid,
         payload=MessagePayload(
-            content=f"{userInfo.userName}已退出该群",
+            content=f"{userInfo.username}已退出该群",
         )
     )
-    await GCM.sending(groupInfo.group, userInfo.uuid, removeMessage)
-    await GCM.removeUser(groupInfo.group, userInfo.uuid)
+
+    # await GCM.sending(groupInfo.group, userInfo.uuid, removeMessage)
+    # await GCM.removeUser(groupInfo.group, userInfo.uuid)
+    await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, removeMessage)
+    await WCM.disconnectUserFromGroup(userInfo.uuid, groupInfo.group)
 
     return {"detail": "ok"}
 
@@ -148,27 +152,29 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
         group=groupInfo.group,
         senderID=userInfo.uuid,
         payload=MessagePayload(
-            content=f"{targetInfo.userName}已被移出群聊",
+            content=f"{targetInfo.username}已被移出群聊",
         )
     )
-    await GCM.sending(groupInfo.group, userInfo.uuid, removeMessage)
-    await GCM.removeUser(groupInfo.group, targetInfo.uuid)
+    # await GCM.sending(groupInfo.group, userInfo.uuid, removeMessage)
+    # await GCM.removeUser(groupInfo.group, targetInfo.uuid)
+    await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, removeMessage)
+    await WCM.disconnectUserFromGroup(userInfo.uuid, groupInfo.group)
 
     return {"detail": "ok"}
 
 
-@groupRouter.get('/{group}/members/admin')
-def getAdminInfo(info: Info = Depends(CheckPermission(PermissionValidate.notLimit))):
-    '''
-    获取群主+管理员信息 需要登录
-    '''
-    groupInfo = info.groupInfo
-    res = {
-        "owner": CrudHelpers.userObjectIDtoInfo(groupInfo.owner).model_dump(),
-        "admin": [CrudHelpers.userObjectIDtoInfo(i).model_dump() for i in groupInfo.admin]
-    }
-
-    return res
+# @groupRouter.get('/{group}/members/admin')
+# def getAdminInfo(info: Info = Depends(CheckPermission(PermissionValidate.notLimit))):
+#     '''
+#     获取群主+管理员信息 需要登录
+#     '''
+#     groupInfo = info.groupInfo
+#     res = {
+#         "owner": CrudHelpers.userObjectIDtoInfo(groupInfo.owner).model_dump(),
+#         "admin": [CrudHelpers.userObjectIDtoInfo(i).model_dump() for i in groupInfo.admin]
+#     }
+#
+#     return res
 
 
 @groupRouter.post("/{group}/members/admin/{uuid}")
@@ -292,10 +298,12 @@ async def join(answer: GroupA,
         group=groupInfo.group,
         senderID=userInfo.uuid,
         payload=MessagePayload(
-            content=f"{userInfo.userName}加入该群",
+            content=f"{userInfo.username}加入该群",
         )
     )
-    await GCM.sending(groupInfo.group, userInfo.uuid, joinedMessage)
+    # await GCM.sending(groupInfo.group, userInfo.uuid, joinedMessage)
+    WCM.userJoinedGroup(userInfo.uuid, groupInfo.group)
+    await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, joinedMessage)
 
     return {"detail": "ok"}
 
@@ -339,7 +347,8 @@ async def joinRequest(reason: Reason,
     )
     for objID in admins:
         info = CrudHelpers.userObjectIDtoInfo(objID)
-        await SCM.sending(info.uuid, sysMessage)
+        # await SCM.sending(info.uuid, sysMessage)
+        await WCM.sendingSystemMessage(info.uuid, sysMessage)
 
     return {"detail": "ok"}
 
@@ -370,7 +379,8 @@ async def queryJoinRequest(group: str = Path(...),
             payload=msg.payload
         )
 
-        await SCM.sending(userInfo.uuid, sysMessage)
+        # await SCM.sending(userInfo.uuid, sysMessage)
+        await WCM.sendingSystemMessage(userInfo.uuid, sysMessage)
 
 
 @groupRouter.post('/{group}/verify/request/{time}')
@@ -414,7 +424,8 @@ async def requestAccept(time: str = Path(...),
         state=currentState,
         payload=groupInfo.name
     )
-    await SCM.sending(requestInfo.senderID, sysMessage)
+    # await SCM.sending(requestInfo.senderID, sysMessage)
+    await WCM.sendingSystemMessage(requestInfo.senderID, sysMessage)
 
     GROUP_REQUEST.update(
         {"time": time},
@@ -434,20 +445,22 @@ async def requestAccept(time: str = Path(...),
     )
     for objID in admins:
         info = CrudHelpers.userObjectIDtoInfo(objID)
-        await SCM.sending(info.uuid, sysMessage)
+        # await SCM.sending(info.uuid, sysMessage)
+        await WCM.sendingSystemMessage(info.uuid, sysMessage)
 
     # 向群中广播加入消息
-
     joinedMessage = GetMessageSchema(
         time=timestamp(),
         type="system",
         group=groupInfo.group,
         senderID=userInfo.uuid,
         payload=MessagePayload(
-            content=f"{targetInfo.userName}加入该群",
+            content=f"{targetInfo.username}加入该群",
         )
     )
-    await GCM.sending(groupInfo.group, userInfo.uuid, joinedMessage)
+    # await GCM.sending(groupInfo.group, userInfo.uuid, joinedMessage)
+    WCM.userJoinedGroup(userInfo.uuid, groupInfo.group)
+    await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, joinedMessage)
 
     return {"detail": "ok"}
 
@@ -500,7 +513,8 @@ async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidat
             content=hashcode,
         )
     )
-    await GCM.sending(groupInfo.group, userInfo.uuid, message)
+    # await GCM.sending(groupInfo.group, userInfo.uuid, message)
+    await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, message)
 
     return {"detail": "ok"}
 

@@ -45,30 +45,11 @@ def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -
     return CheckerState.NO_PERMISSION
 
 
-def audioMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
-    hashcode = message.payload.content
-    file = FS.query(hashcode)
-    if not file:
-        return CheckerState.NOT_EXIST
-
-    # 音频长度是否在限制以内
-    try:
-        limit = Limits.GROUP_AUDIO_LENGTH_RANGE.value
-        audio = AudioSegment.from_file(io.BytesIO(file.file))
-        length = round(len(audio) / 1000)
-        if not (limit['MIN'] <= length <= limit['MAX']):
-            return CheckerState.LIMIT_EXCEED
-        return CheckerState.OK
-    except Exception as e:
-        return CheckerState.UNKNOWN
-
-
 def beforeSendCheck(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
     '''
     如有必要，发送消息前对消息进行检查
     '''
     callFunction = {
-        "audio": audioMessageChecker,
         "revoke": revokeMessageChecker,
     }
 

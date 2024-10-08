@@ -1,16 +1,18 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Header
 
 from depends.getInfo import getSelfInfo, getGroupInfo
+from public.const import Auth
 from schema.message import GetMessageSchema, MessagePayload
+from utils.crud import WS_TOKEN
 from utils.helper import timestamp
-from utils.wsConnectionMgr import GCM, SCM
+from utils.wsConnectionMgr import GCM, SCM, WCM
 
-wsRouter = APIRouter(prefix="/ws", tags=['Websockets'])
+wsRouter = APIRouter(prefix="/websocket", tags=['Websockets'])
 
 
 @wsRouter.websocket("/ws")
 async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Sec_Websocket_Protocol=Header(None)):
-    Authorization = Sec_Websocket_Protocol  # 你以为是subprotocol? 其实是我Authorization哒
+    Authorization = Sec_Websocket_Protocol
 
     try:
         userInfo = getSelfInfo(Authorization)
@@ -41,20 +43,21 @@ async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Se
         await GCM.removeUser(groupID, userID)
 
 
-@wsRouter.websocket('/systemWS')
-async def SystemMessageSender(websocket: WebSocket, userID: str, Sec_Websocket_Protocol=Header(None)):
-    Authorization = Sec_Websocket_Protocol
+@wsRouter.websocket('/connect')
+async def websocketConnection(websocket: WebSocket, Sec_Websocket_Protocol=Header(None)):
+    token = Sec_Websocket_Protocol
+    info = WS_TOKEN.query({"token": token})
+    time = timestamp()
+    limit = Auth.WEBSOCKET_TOKEN_EXPIRE_SECONDS.value
+    if not info or (int(time) - int(info.time)) // 1000 > limit:
+        raise WebSocketException(code=4001, reason="无效的token")
 
-    try:
-        getSelfInfo(Authorization)
-    except HTTPException as e:
-        raise WebSocketException(code=4003, reason="Token已过期")
-
-    await SCM.connect(websocket, userID, Authorization)
+    WS_TOKEN.delete({"token": token})
+    await WCM.connect(info.uuid, info.device, websocket, token)
 
     try:
         while True:
             await websocket.receive_json()
     except Exception as e:
-        print("SCM", e)
-        await SCM.disconnect(userID)
+        print("WCM", e)
+        await WCM.disconnectUser(info.uuid, info.device)

@@ -1,7 +1,7 @@
 from datetime import timedelta
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.security import OAuth2PasswordRequestForm
 
 from depends.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
@@ -11,12 +11,12 @@ from public.stateCode import RequestState
 from schema.group import GroupSchema
 from schema.input import UserRegister, Reason
 from schema.message import SysMessageSchema, MessagePayload, GetMessageSchema
-from schema.storage import RequestMsgSchema
+from schema.storage import RequestMsgSchema, WebsocketTokenSchema
 from schema.group import Info
 from schema.user import UserSchema
-from utils.crud import ACCOUNT, GROUP, DB_CRUD, FRIEND_REQUEST
+from utils.crud import ACCOUNT, GROUP, DB_CRUD, FRIEND_REQUEST, WS_TOKEN, CrudHelpers
 from utils.helper import hashPassword, timestamp, createAccessToken
-from utils.wsConnectionMgr import SCM, GCM
+from utils.wsConnectionMgr import SCM, GCM, WCM
 
 userRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
 
@@ -84,6 +84,45 @@ def check(newToken=Depends(checker)):
     return newToken
 
 
+@userRouter.get('/wsToken')
+def getWSToken(device: str = Query(...),
+               userInfo: UserSchema = Depends(getSelfInfo)):
+    '''
+    获取websocket连接凭证
+    websocket连接必须带上这个wsToken才允许连接，wsToken有效期很短
+    '''
+    # 没有deviceId就生成一个
+    deviceID = device if device else str(uuid4().hex)[::4]
+    time = timestamp()
+    deviceInfo = userInfo.lastSeen
+
+    # 历史登录设备已满，淘汰最久没有使用的设备
+    if len(deviceInfo) == Limits.MAX_DEVICE.value:
+        deviceInfo = {i: deviceInfo[i] for i in deviceInfo if deviceInfo[i] != min(deviceInfo.values())}
+        deviceInfo[deviceID] = time
+
+    ACCOUNT.update(
+        {"uuid": userInfo.uuid},
+        {"$set": {"lastSeen": deviceInfo}}
+    )
+
+    # TODO: 同时在线设备已满强制下线
+
+    token = uuid4().hex
+    info = WebsocketTokenSchema(
+        time=time,
+        uuid=userInfo.uuid,
+        token=token,
+        device=deviceID,
+    )
+    WS_TOKEN.add(info.model_dump())
+
+    return {
+        "device": deviceID,
+        "token": token,
+    }
+
+
 @userRouter.get('/profile/me')
 def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     '''
@@ -93,9 +132,11 @@ def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     for index, groupObjID in enumerate(userInfo.groups):
         groupInfo = GROUP.query(
             {"_id": groupObjID},
-            {"_id": 0, "group": 1, "lastUpdate": 1}
-        )
-        userInfo.groups[index] = groupInfo.model_dump()
+            {"_id": 0, "group": 1, "lastUpdate": 1, "owner": 1, "admin": 1}
+        ).model_dump()
+        groupInfo["owner"] = CrudHelpers.userObjectIDtoInfo(groupInfo["owner"]).model_dump()
+        groupInfo["admin"] = [CrudHelpers.userObjectIDtoInfo(i).model_dump() for i in groupInfo["admin"]]
+        userInfo.groups[index] = groupInfo
 
     info = userInfo.model_dump()
     del info["id"]
@@ -111,36 +152,12 @@ def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
     :return: 用户的userName, avatar, lastUpdate
     '''
     info = {
-        "userName": userInfo.userName,
+        "username": userInfo.username,
         "avatar": userInfo.avatar,
         "lastUpdate": userInfo.lastUpdate,
     }
 
     return info
-
-
-@userRouter.get('/{uuid}/newDevice')
-def getNewDeviceID(userInfo: UserSchema = Depends(getSelfInfo)):
-    '''
-    新设备登录
-    '''
-    limit = Limits.MAX_DEVICE.value
-    deviceInfo = userInfo.lastSeen
-    if len(deviceInfo) == limit:
-        earliest = min(deviceInfo.values())
-        for deviceID in deviceInfo:
-            if deviceInfo[deviceID] == earliest:
-                del deviceInfo[deviceID]
-
-    newDeviceID = str(uuid4().hex)[::4]
-    deviceID[newDeviceID] = timestamp()
-
-    ACCOUNT.update(
-        {"uuid": userInfo.uuid},
-        {"$set": {"lastUpdate": deviceInfo}}
-    )
-
-    return {"deviceID": newDeviceID}
 
 
 @userRouter.get('/{uuid}/profile/current')
@@ -150,7 +167,7 @@ def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
     :param uuid: 用户uuid
     :return: 用户的lastSeen, bio
     '''
-    if userCurrentInfo.uuid in SCM:
+    if userCurrentInfo.uuid in WCM:
         userCurrentInfo.lastSeen = "在线"
 
     info = {
@@ -187,7 +204,8 @@ async def friendRequest(reason: Reason,
         senderKey=userInfo.lastUpdate,
         payload=reason.reason,
     )
-    await SCM.sending(targetInfo.uuid, sysMessage)
+    # await SCM.sending(targetInfo.uuid, sysMessage)
+    await WCM.sendingSystemMessage(targetInfo.uuid, sysMessage)
 
     requestMessage = RequestMsgSchema(
         time=time,
@@ -215,17 +233,22 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
     )
 
     for msg in messages:
+        senderInfo = ACCOUNT.query(
+            {"uuid": msg.senderID},
+            {"_id": 0, "lastUpdate": 1},
+        )
         sysMessage = SysMessageSchema(
             time=msg.time,
             type=msg.type,
             state=msg.state,
             target=msg.target,
-            targetKey=msg.targetKey,
+            targetKey=userInfo.lastUpdate,
             senderID=msg.senderID,
-            senderKey=msg.senderKey,
+            senderKey=senderInfo.lastUpdate,
             payload=msg.payload,
         )
-        await SCM.sending(userInfo.uuid, sysMessage)
+        # await SCM.sending(userInfo.uuid, sysMessage)
+        await WCM.sendingSystemMessage(userInfo.uuid, sysMessage)
 
 
 @userRouter.post('/{uuid}/verify/request/{time}')
@@ -243,7 +266,7 @@ async def requestAccept(time: str = Path(...),
     通过好友申请
     '''
     userInfo, targetInfo, requestInfo = info.userInfo, info.targetInfo, info.requestInfo
-    name = f"{targetInfo.userName}和{userInfo.userName}的群聊"
+    name = f"{targetInfo.username}和{userInfo.username}的群聊"
     currentState = RequestState.ACCEPTED.value
     groupID = str(uuid4().int)[::4]
     newGroup = GroupSchema(
@@ -276,8 +299,12 @@ async def requestAccept(time: str = Path(...),
         state=currentState,
         payload=name
     )
-    await SCM.sending(requestInfo.senderID, sysMessage)
-    await SCM.sending(requestInfo.target, sysMessage)
+    # await SCM.sending(requestInfo.senderID, sysMessage)
+    # await SCM.sending(requestInfo.target, sysMessage)
+    await WCM.sendingSystemMessage(requestInfo.senderID, sysMessage)
+    await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
+    WCM.userJoinedGroup(requestInfo.senderID, groupID)
+    WCM.userJoinedGroup(requestInfo.target, groupID)
 
     FRIEND_REQUEST.update(
         {"time": time},
@@ -295,7 +322,8 @@ async def requestAccept(time: str = Path(...),
         senderKey=targetInfo.lastUpdate,
         payload=requestInfo.payload
     )
-    await SCM.sending(requestInfo.target, sysMessage)
+    # await SCM.sending(requestInfo.target, sysMessage)
+    await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
 
     joinedMessage = GetMessageSchema(
         time=timestamp(),
@@ -306,7 +334,8 @@ async def requestAccept(time: str = Path(...),
             content="我们已经是好友了，一起来聊天吧！",
         )
     )
-    await GCM.sending(groupID, userInfo.uuid, joinedMessage)
+    # await GCM.sending(groupID, userInfo.uuid, joinedMessage)
+    await WCM.sendingSystemMessage(userInfo.uuid, groupID, joinedMessage)
 
     return {"detail": "ok"}
 

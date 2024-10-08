@@ -19,14 +19,21 @@ class API(Enum):
 
 class Database(Enum):
     CLIENT = pymongo.MongoClient(database['HOST'], database['PORT'], maxPoolSize=database['MAX_POOL_SIZE'])
+
     INFO_DB = "UserInfo"
     ACCOUNT_COLLECTION = "Account"
     GROUP_COLLECTION = "Group"
+
     FILE_DB = "File"
+
     STORAGE_DB = "Storage"
+
     REQUEST_DB = "Request"
     GROUP_REQUEST_COLLECTION = "Group"
     FRIEND_REQUEST_COLLECTION = "Friend"
+
+    TOKEN_DB = "Token"
+    WEBSOCKET_TOKEN_COLLECTION = "WSToken"
 
 
 class Auth(Enum):
@@ -35,6 +42,7 @@ class Auth(Enum):
     SALT = auth['SALT']
     USER_ACCESS_TOKEN_EXPIRE_MINUTES = auth['USER_ACCESS_TOKEN_EXPIRE_MINUTES']
     BOT_ACCESS_TOKEN_EXPIRE_MINUTES = auth['BOT_ACCESS_TOKEN_EXPIRE_MINUTES']
+    WEBSOCKET_TOKEN_EXPIRE_SECONDS = 30
     OAUTH2 = OAuth2PasswordBearer(tokenUrl=f"/{API.VERSION.value}/user/token")
 
 
@@ -56,5 +64,4 @@ class Limits(Enum):
     MAX_DEVICE = limits['MAX_DEVICE']
     MAX_ONLINE_DEVICE = limits['MAX_ONLINE_DEVICE']
 
-    TIME_LENGTH_RANGE = {"MIN": 13, "MAX": 13}  # 时间戳必须是13位
     FILETYPE = {"file", "audio"}  # 允许上传的文件类型

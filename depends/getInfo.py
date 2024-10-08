@@ -87,7 +87,6 @@ def getSelfInfo(token: str = Depends(Auth.OAUTH2.value)) -> UserSchema:
         {"uuid": payload["uuid"]},
         {"password": 0, "avatar": 0},
     )
-
     return selfInfo
 
 

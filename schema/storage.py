@@ -28,3 +28,10 @@ class RequestMsgSchema(BaseModel):
     state: str = RequestState.PENDING.value
     senderID: str = ""
     payload: str = ""
+
+
+class WebsocketTokenSchema(BaseModel):
+    time: str
+    uuid: str
+    token: str
+    device: str

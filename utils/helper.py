@@ -11,7 +11,10 @@ def hashPassword(password: str) -> str:
     return hashlib.sha256(withSalt.encode()).hexdigest()
 
 
-def timestamp() -> str:  # ms
+def timestamp() -> str:
+    '''
+    以字符串的形式返回当前的时间戳，单位ms
+    '''
     return ("{:.3f}".format(datetime.now().timestamp())).replace(".", "")
 
 
