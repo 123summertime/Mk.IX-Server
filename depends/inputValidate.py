@@ -18,7 +18,7 @@ class InputValidate:
         return s
 
     @staticmethod
-    def validateImageSize(image: str, limit: Limits, name: str) -> str:
+    def validateImageSize(image: str, limit: Limits, name: str) -> str:  # Base64
         limit = limit.value
         # 初步判定大小 1KB文件编码后约为1400字符
         if len(image) > limit['MAX'] * 1400:
@@ -32,32 +32,34 @@ class InputValidate:
         return image
 
     @staticmethod
-    async def fileValidator(file: UploadFile) -> FileInput:
+    async def fileValidator(filename: str, content: bytes) -> FileInput:
         limit = Limits.GROUP_FILE_SIZE_RANGE.value
-        content = await file.read()
         size = len(content) // 1024
         if not (limit['MIN'] <= size <= limit['MAX']):
             raise HTTPException(status_code=400, detail=f"文件大小必须在{limit['MIN']}KB至{limit['MAX']}KB之间")
-        return FileInput(fileName=file.filename, fileType=file.content_type, content=content)
+        return FileInput(fileName=filename, fileType='file', content=content)
 
     @staticmethod
-    async def audioValidator(file: UploadFile) -> FileInput:
+    async def audioValidator(filename: str, content: bytes) -> FileInput:
         limit = Limits.GROUP_AUDIO_LENGTH_RANGE.value
-        content = await file.read()
         audio = AudioSegment.from_file(io.BytesIO(content))
         length = round(len(audio) / 1000)
         if not (limit['MIN'] <= length <= limit['MAX']):
             raise HTTPException(status_code=400, detail=f"语音时长必须在{limit['MIN']}s至{limit['MAX']}s之间")
-        return FileInput(fileName=file.filename, fileType=file.content_type, content=content)
+        return FileInput(fileName=filename, fileType='audio', content=content)
 
     @staticmethod
     async def validateInputFile(file: UploadFile = File(...),
                                 fileType: str = Form(...)) -> FileInput:
-        if fileType not in Limits.FILETYPE.value:
+        if fileType not in Limits.FILE_TYPE.value:
             raise HTTPException(status_code=400, detail=f"不允许上传的类型: {fileType}")
+        try:
+            content = await file.read()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"无法解析的文件")
 
         mapping = {
             "file": InputValidate.fileValidator,
             "audio": InputValidate.audioValidator,
         }
-        return await mapping[fileType](file)
+        return await mapping[fileType](file.filename, content)

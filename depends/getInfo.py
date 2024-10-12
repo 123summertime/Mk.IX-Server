@@ -137,6 +137,8 @@ def getRequest(userInfo: UserSchema,
     collection = GROUP_REQUEST if isGroupRequest else FRIEND_REQUEST
     query = {"time": time} if time else {"senderID": userInfo.uuid, "target": target}
     res = collection.queryMany(query, {"_id": 0})
+    if time:
+        return res[0]
     for req in res:
         if req.state == RequestState.PENDING.value:
             return req

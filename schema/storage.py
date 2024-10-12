@@ -10,7 +10,6 @@ class StorageSchema(BaseModel):
     time: str = ""
     type: str = ""
     senderID: str = ""   # user uuid
-    senderKey: str = ""  # user lastUpdate
     payload: MessagePayload | None = None
 
 

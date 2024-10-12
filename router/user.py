@@ -4,19 +4,19 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.security import OAuth2PasswordRequestForm
 
-from depends.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
 from depends.checkPermission import CheckRequest, RequestValidate
+from depends.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
 from public.const import API, Auth, Default, Database, Limits
-from public.stateCode import RequestState
+from public.stateCode import RequestState, SystemMessageType
 from schema.group import GroupSchema
-from schema.input import UserRegister, Reason
-from schema.message import SysMessageSchema, MessagePayload, GetMessageSchema
-from schema.storage import RequestMsgSchema, WebsocketTokenSchema
 from schema.group import Info
+from schema.input import UserRegister, Reason
+from schema.message import SysMessageSchema, MessagePayload, GetMessageSchema, BroadcastMessageSchema
+from schema.storage import RequestMsgSchema, WebsocketTokenSchema
 from schema.user import UserSchema
 from utils.crud import ACCOUNT, GROUP, DB_CRUD, FRIEND_REQUEST, WS_TOKEN, CrudHelpers
 from utils.helper import hashPassword, timestamp, createAccessToken
-from utils.wsConnectionMgr import SCM, GCM, WCM
+from utils.wsConnectionMgr import WCM
 
 userRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
 
@@ -49,7 +49,7 @@ def register(userRegister: UserRegister):
 
 @userRouter.post('/token')
 def token(formData: OAuth2PasswordRequestForm = Depends(),
-          isBot: bool = False):
+          isBot: bool = Query(...)):
     '''
     登录表单验证
     formData: 表单
@@ -149,33 +149,28 @@ def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
     '''
     获取用户信息
     :param uuid: 用户uuid
-    :return: 用户的userName, avatar, lastUpdate
+    :return: 用户的username, avatar, lastUpdate
     '''
     info = {
         "username": userInfo.username,
         "avatar": userInfo.avatar,
         "lastUpdate": userInfo.lastUpdate,
     }
-
     return info
 
 
 @userRouter.get('/{uuid}/profile/current')
-def getUserCurrentInfo(userCurrentInfo: UserSchema = Depends(getUserInfo)):
+def getUserCurrentInfo(userInfo: UserSchema = Depends(getUserInfo)):
     '''
     获取用户当前信息
     :param uuid: 用户uuid
     :return: 用户的lastSeen, bio
     '''
-    if userCurrentInfo.uuid in WCM:
-        userCurrentInfo.lastSeen = "在线"
-
     info = {
-        "bio": userCurrentInfo.bio,
-        "lastSeen": userCurrentInfo.lastSeen,
-        "lastUpdate": userCurrentInfo.lastUpdate,
+        "bio": userInfo.bio,
+        "lastSeen": "在线" if userInfo.uuid in WCM else max(userInfo.lastSeen.values()),
+        "lastUpdate": userInfo.lastUpdate,
     }
-
     return info
 
 
@@ -195,21 +190,22 @@ async def friendRequest(reason: Reason,
     time = timestamp()
     userInfo, targetInfo = info.userInfo, info.targetInfo
 
+    # 推送给接收方
     sysMessage = SysMessageSchema(
         time=time,
-        type="friend",
+        type=SystemMessageType.FRIEND.value,
         target=targetInfo.uuid,
         targetKey=targetInfo.lastUpdate,
+        state=RequestState.PENDING.value,
         senderID=userInfo.uuid,
         senderKey=userInfo.lastUpdate,
         payload=reason.reason,
     )
-    # await SCM.sending(targetInfo.uuid, sysMessage)
     await WCM.sendingSystemMessage(targetInfo.uuid, sysMessage)
 
     requestMessage = RequestMsgSchema(
         time=time,
-        type="friend",
+        type=SystemMessageType.FRIEND.value,
         target=targetInfo.uuid,
         senderID=userInfo.uuid,
         payload=reason.reason,
@@ -223,11 +219,10 @@ async def friendRequest(reason: Reason,
 async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     获取好友申请
-    结果通过ws(SCM)发送
+    结果通过ws(WCM)发送
     '''
     time = timestamp()
-    reqCollection = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_COLLECTION.value, RequestMsgSchema)
-    messages = reqCollection.queryMany(  # 获取在有效时间内的请求 单位:ms
+    messages = FRIEND_REQUEST.queryMany(  # 获取在有效时间内的请求 单位:ms
         {"target": userInfo.uuid, "time": {"$gt": str(int(time) - Limits.REQUEST_EXPIRE_MINUTES.value * 60 * 1000)}},
         {"_id": 0}
     )
@@ -247,7 +242,6 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
             senderKey=senderInfo.lastUpdate,
             payload=msg.payload,
         )
-        # await SCM.sending(userInfo.uuid, sysMessage)
         await WCM.sendingSystemMessage(userInfo.uuid, sysMessage)
 
 
@@ -290,26 +284,23 @@ async def requestAccept(time: str = Path(...),
         {"uuid": userInfo.uuid},
         {"$push": {"groups": groupObjID}}
     )
-
-    # 向双方推送加好友成功的消息
-    sysMessage = SysMessageSchema(
-        time=timestamp(),
-        type="friended",
-        target=groupID,
-        state=currentState,
-        payload=name
-    )
-    # await SCM.sending(requestInfo.senderID, sysMessage)
-    # await SCM.sending(requestInfo.target, sysMessage)
-    await WCM.sendingSystemMessage(requestInfo.senderID, sysMessage)
-    await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
-    WCM.userJoinedGroup(requestInfo.senderID, groupID)
-    WCM.userJoinedGroup(requestInfo.target, groupID)
-
     FRIEND_REQUEST.update(
         {"time": time},
         {"$set": {"state": currentState}}
     )
+
+    # 向双方推送加好友成功的消息
+    sysMessage = SysMessageSchema(
+        time=timestamp(),
+        type=SystemMessageType.FRIENDED.value,
+        target=groupID,
+        state=currentState,
+        payload=name
+    )
+    await WCM.sendingSystemMessage(requestInfo.senderID, sysMessage)
+    await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
+    WCM.userJoinedGroup(requestInfo.senderID, groupID)
+    WCM.userJoinedGroup(requestInfo.target, groupID)
 
     # 推送申请结果
     sysMessage = SysMessageSchema(
@@ -322,19 +313,18 @@ async def requestAccept(time: str = Path(...),
         senderKey=targetInfo.lastUpdate,
         payload=requestInfo.payload
     )
-    # await SCM.sending(requestInfo.target, sysMessage)
     await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
 
-    joinedMessage = GetMessageSchema(
+    # 在群里发送系统消息
+    joinedMessage = BroadcastMessageSchema(
         time=timestamp(),
-        type="system",
+        type=SystemMessageType.SYSTEM.value,
         group=groupID,
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content="我们已经是好友了，一起来聊天吧！",
         )
     )
-    # await GCM.sending(groupID, userInfo.uuid, joinedMessage)
     await WCM.sendingSystemMessage(userInfo.uuid, groupID, joinedMessage)
 
     return {"detail": "ok"}
@@ -352,9 +342,24 @@ async def requestReject(time: str = Path(...),
                             )()
                         )):
     userInfo, targetInfo, requestInfo = info.userInfo, info.targetInfo, info.requestInfo
+    currentState = RequestState.REJECTED.value
+
     FRIEND_REQUEST.update(
         {"time": time},
-        {"$set": {"state": RequestState.REJECTED.value}}
+        {"$set": {"state": currentState}}
     )
+
+    # 推送申请结果
+    sysMessage = SysMessageSchema(
+        time=requestInfo.time,
+        type=requestInfo.type,
+        target=userInfo.uuid,
+        targetKey=userInfo.lastUpdate,
+        state=currentState,
+        senderID=targetInfo.uuid,
+        senderKey=targetInfo.lastUpdate,
+        payload=requestInfo.payload
+    )
+    await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
 
     return {"detail": "ok"}

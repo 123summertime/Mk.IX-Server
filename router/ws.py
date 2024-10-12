@@ -5,42 +5,9 @@ from public.const import Auth
 from schema.message import GetMessageSchema, MessagePayload
 from utils.crud import WS_TOKEN
 from utils.helper import timestamp
-from utils.wsConnectionMgr import GCM, SCM, WCM
+from utils.wsConnectionMgr import WCM
 
 wsRouter = APIRouter(prefix="/websocket", tags=['Websockets'])
-
-
-@wsRouter.websocket("/ws")
-async def GroupMessageSender(websocket: WebSocket, userID: str, groupID: str, Sec_Websocket_Protocol=Header(None)):
-    Authorization = Sec_Websocket_Protocol
-
-    try:
-        userInfo = getSelfInfo(Authorization)
-        groupInfo = getGroupInfo(groupID)
-        if userInfo.id not in groupInfo.user:
-            raise HTTPException(403)
-    except HTTPException:
-        raise WebSocketException(code=4003, reason="Token已过期或未加入该群聊")
-
-    await GCM.addConnectedUser(groupID, websocket, userID, Authorization)
-
-    try:
-        while True:
-            message = await websocket.receive_json()
-            print(f"User: {userID} Group: {groupID} Type: {message['type']} Payload: {message['payload']['content'][:30]}")
-            getMessage = GetMessageSchema(
-                time=timestamp(),
-                type=message["type"],
-                group=groupID,
-                senderID=userID,
-                payload=MessagePayload.model_validate(message["payload"])
-            )
-            await GCM.sending(groupID, userID, getMessage)
-
-    except Exception as e:
-        # traceback.print_exc()
-        print("GCM", groupID, e)
-        await GCM.removeUser(groupID, userID)
 
 
 @wsRouter.websocket('/connect')
@@ -57,7 +24,16 @@ async def websocketConnection(websocket: WebSocket, Sec_Websocket_Protocol=Heade
 
     try:
         while True:
-            await websocket.receive_json()
+            message = await websocket.receive_json()
+            print(f"User:{info.uuid} Group:{message['group']} Type:{message['type']} Payload:{message['payload']['content'][:30]}")
+            getMessage = GetMessageSchema(
+                time=timestamp(),
+                type=message["type"],
+                group=message["group"],
+                senderID=info.uuid,
+                payload=MessagePayload.model_validate(message["payload"])
+            )
+            await WCM.sendingGroupMessage(info.uuid, message["group"], getMessage)
     except Exception as e:
         print("WCM", e)
         await WCM.disconnectUser(info.uuid, info.device)

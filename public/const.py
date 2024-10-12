@@ -64,4 +64,5 @@ class Limits(Enum):
     MAX_DEVICE = limits['MAX_DEVICE']
     MAX_ONLINE_DEVICE = limits['MAX_ONLINE_DEVICE']
 
-    FILETYPE = {"file", "audio"}  # 允许上传的文件类型
+    FILE_TYPE = {"file", "audio"}  # 允许上传的文件类型
+    MESSAGE_TYPE = {"text", "image", "file", "audio", "forwardFile", "file", "audio"}    # 所有可发送的消息类型

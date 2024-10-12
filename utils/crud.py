@@ -10,7 +10,7 @@ from schema.storage import StorageSchema, RequestMsgSchema, FileStorageSchema, W
 from schema.user import UserSchema
 
 client = Database.CLIENT.value
-T = Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, WebsocketTokenSchema, None]
+_T = Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, WebsocketTokenSchema, None]
 
 
 class DB_CRUD():
@@ -18,7 +18,7 @@ class DB_CRUD():
         self._schema = schema
         try:
             self._collection = client[name][collectionName]
-        except Exception:
+        except Exception as e:
             raise NameError("Invalid DB or collection name")
 
     def add(self, kv, many=False):
@@ -36,13 +36,13 @@ class DB_CRUD():
     def update(self, qkv, ukv):
         return self._collection.update_one(qkv, ukv)
 
-    def query(self, kv, ignore={}) -> T:
+    def query(self, kv, ignore={}) -> _T:
         info = self._collection.find_one(kv, ignore)
         if not info:
             return None
         return self._schema.parse_obj(info)
 
-    def queryMany(self, kv, ignore={}) -> List[T] | None:
+    def queryMany(self, kv, ignore={}) -> List[_T] | None:
         info = self._collection.find(kv, ignore)
         if not info:
             return None
@@ -128,7 +128,7 @@ class CrudHelpers():
 
 ACCOUNT = DB_CRUD(Database.INFO_DB.value, Database.ACCOUNT_COLLECTION.value, UserSchema)
 GROUP = DB_CRUD(Database.INFO_DB.value, Database.GROUP_COLLECTION.value, GroupSchema)
-FS = GridFS_CRUD(Database.FILE_DB.value)
 GROUP_REQUEST = DB_CRUD(Database.REQUEST_DB.value, Database.GROUP_REQUEST_COLLECTION.value, RequestMsgSchema)
 FRIEND_REQUEST = DB_CRUD(Database.REQUEST_DB.value, Database.FRIEND_REQUEST_COLLECTION.value, RequestMsgSchema)
 WS_TOKEN = DB_CRUD(Database.TOKEN_DB.value, Database.WEBSOCKET_TOKEN_COLLECTION.value, WebsocketTokenSchema)
+FS = GridFS_CRUD(Database.FILE_DB.value)

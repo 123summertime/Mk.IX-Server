@@ -47,7 +47,7 @@ def audioFileMessageModifier(userID: str, groupID: str, message: GetMessageSchem
         return CheckerState.UNKNOWN
 
 
-def beforeSendModify(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+def beforeSendingModify(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
     '''
     如有必要，发送消息前对消息进行原地修改
     '''

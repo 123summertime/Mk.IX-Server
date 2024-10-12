@@ -18,12 +18,17 @@ class GetMessageSchema(BaseModel):
     payload: MessagePayload
 
 
+class BroadcastMessageSchema(GetMessageSchema):
+    pass
+
+
 class SendMessageSchema(BaseModel):
     time: str
     type: str
     group: str
-    senderID: str = ""   # user集合中的uuid
-    senderKey: str = ""  # user集合中的lastUpdate
+    isSystemMessage: bool = False
+    senderID: str = ""     # user集合中的uuid
+    senderKey: str = ""    # user集合中的lastUpdate
     payload: MessagePayload
 
 
@@ -32,7 +37,8 @@ class SysMessageSchema(BaseModel):
     type: str
     target: str = ""
     targetKey: str = ""
-    state: str = RequestState.PENDING.value
+    isSystemMessage: bool = True
+    state: str = RequestState.NIL.value
     senderID: str = ""
     senderKey: str = ""
     payload: str

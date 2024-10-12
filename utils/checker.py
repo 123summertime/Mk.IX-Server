@@ -1,12 +1,8 @@
-import io
-
-from pydub import AudioSegment
-
 from public.const import Database, Limits
 from public.stateCode import CheckerState
-from schema.message import GetMessageSchema
+from schema.message import GetMessageSchema, BroadcastMessageSchema
 from schema.storage import StorageSchema
-from utils.crud import DB_CRUD, ACCOUNT, GROUP, FS
+from utils.crud import DB_CRUD, ACCOUNT, GROUP
 
 
 def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
@@ -45,10 +41,13 @@ def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -
     return CheckerState.NO_PERMISSION
 
 
-def beforeSendCheck(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+def beforeSendingCheck(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
     '''
     如有必要，发送消息前对消息进行检查
     '''
+    if not (isinstance(message, BroadcastMessageSchema) or message.type in Limits.MESSAGE_TYPE.value):
+        return CheckerState.NOT_ALLOWED_TYPE
+
     callFunction = {
         "revoke": revokeMessageChecker,
     }
@@ -56,5 +55,4 @@ def beforeSendCheck(userID: str, groupID: str, message: GetMessageSchema) -> Che
     if message.type not in callFunction:
         return CheckerState.OK
 
-    res = callFunction[message.type](userID, groupID, message)
-    return res
+    return callFunction[message.type](userID, groupID, message)

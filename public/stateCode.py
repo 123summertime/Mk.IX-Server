@@ -1,8 +1,8 @@
 from enum import Enum
 
 
-# 请求状态
 class RequestState(Enum):
+    NIL = "无"
     PENDING = "等待审核"
     ACCEPTED_BY_OWNER = "群主已同意"
     REJECTED_BY_OWNER = "群主已拒绝"
@@ -20,6 +20,17 @@ class CheckerState(Enum):
     LIMIT_EXCEED = "时长/大小超出限制"
     NOT_EXIST = "不存在或已过期"
     NO_PERMISSION = "没有权限"
+    NOT_ALLOWED_TYPE = "不允许的类型"
 
     def __bool__(self):
         return self is CheckerState.OK
+
+
+class SystemMessageType(Enum):
+    SYSTEM = "system"
+    FAIL = "fail"
+    JOIN = "join"
+    JOINED = "joined"
+    FRIEND = "friend"
+    FRIENDED = "friended"
+
