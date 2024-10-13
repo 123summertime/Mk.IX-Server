@@ -6,11 +6,11 @@ from gridfs import GridFS
 
 from public.const import Database
 from schema.group import GroupSchema
-from schema.storage import StorageSchema, RequestMsgSchema, FileStorageSchema, WebsocketTokenSchema
+from schema.storage import StorageSchema, RequestMsgSchema, FileStorageSchema, WebsocketTokenSchema, NotificationMsgSchema
 from schema.user import UserSchema
 
 client = Database.CLIENT.value
-_T = Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, WebsocketTokenSchema, None]
+_T = Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, WebsocketTokenSchema, NotificationMsgSchema, None]
 
 
 class DB_CRUD():

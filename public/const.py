@@ -20,18 +20,26 @@ class API(Enum):
 class Database(Enum):
     CLIENT = pymongo.MongoClient(database['HOST'], database['PORT'], maxPoolSize=database['MAX_POOL_SIZE'])
 
+    # 用户数据 群数据
     INFO_DB = "UserInfo"
     ACCOUNT_COLLECTION = "Account"
     GROUP_COLLECTION = "Group"
 
+    # 上传的文件
     FILE_DB = "File"
 
+    # 群内消息 groupID作为集合名
     STORAGE_DB = "Storage"
 
+    # 通知消息 userID作为集合名
+    NotificationDB = "Notification"
+
+    # 申请类型消息 申请入群及好友申请
     REQUEST_DB = "Request"
     GROUP_REQUEST_COLLECTION = "Group"
     FRIEND_REQUEST_COLLECTION = "Friend"
 
+    # websocket连接凭证
     TOKEN_DB = "Token"
     WEBSOCKET_TOKEN_COLLECTION = "WSToken"
 
@@ -61,6 +69,7 @@ class Limits(Enum):
     GROUP_AUDIO_LENGTH_RANGE = limits['GROUP_AUDIO_LENGTH_RANGE']
     GROUP_FILE_SIZE_RANGE = limits['GROUP_FILE_SIZE_RANGE']
     REQUEST_EXPIRE_MINUTES = limits['REQUEST_EXPIRE_MINUTES']
+    NOTIFICATION_EXPIRE_MINUTES = limits['NOTIFICATION_EXPIRE_MINUTES']
     MAX_DEVICE = limits['MAX_DEVICE']
     MAX_ONLINE_DEVICE = limits['MAX_ONLINE_DEVICE']
 

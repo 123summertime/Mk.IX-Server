@@ -3,10 +3,10 @@ from collections import defaultdict
 
 from fastapi import WebSocket
 
-from public.const import Database
+from public.const import Database, Limits
 from public.stateCode import SystemMessageType
 from schema.message import GetMessageSchema, SendMessageSchema, SysMessageSchema
-from schema.storage import StorageSchema
+from schema.storage import StorageSchema, NotificationMsgSchema
 from utils.checker import beforeSendingCheck
 from utils.crud import DB_CRUD, ACCOUNT, GROUP, CrudHelpers
 from utils.helper import timestamp
@@ -63,6 +63,14 @@ class WebsocketConnectionManager:
             self._userGroups[userID].add(groupID)
             self._userConnectToGroupItem(userID, groupID)
 
+    def _userConnectToGroupItem(self,
+                                userID: str,
+                                groupID: str):
+        if groupID not in self._groups:
+            self._groups[groupID] = GroupItem(groupID)
+        self._groups[groupID].addUser(userID)
+        self._userGroups[userID].add(groupID)
+
     async def connect(self,
                       userID: str,
                       deviceID: str,
@@ -82,20 +90,43 @@ class WebsocketConnectionManager:
         for groupID in groupIDs:
             self._userConnectToGroupItem(userID, groupID)
 
-        await self._postOfflineMessages(groupIDs, userInfo.lastSeen.get(deviceID, timestamp()), websocket)
+        lastSeen = userInfo.lastSeen.get(deviceID, timestamp())
+        await self._postOfflineNotificationMessages(userID, lastSeen, websocket)
+        await self._postOfflineGroupMessages(groupIDs, lastSeen, websocket)
 
-    def _userConnectToGroupItem(self,
-                                userID: str,
-                                groupID: str):
-        if groupID not in self._groups:
-            self._groups[groupID] = GroupItem(groupID)
-        self._groups[groupID].addUser(userID)
-        self._userGroups[userID].add(groupID)
+    async def _postOfflineNotificationMessages(self,
+                                               userID: str,
+                                               lastSeen: str,
+                                               websocket: WebSocket):
+        collection = DB_CRUD(Database.NotificationDB.value, userID, NotificationMsgSchema)
+        messages = collection.queryMany(
+            {"target": userID, "time": {"$gt": lastSeen}},
+            {"_id": 0},
+        )
 
-    async def _postOfflineMessages(self,
-                                   groupIDs: str,
-                                   lastSeen: str,
-                                   websocket: WebSocket):
+        for msg in messages:
+            targetInfo = (GROUP if msg.isGroupMessage else ACCOUNT).query(
+                {("group" if msg.isGroupMessage else "uuid"): msg.blank},
+                {("name" if msg.isGroupMessage else "username"): 1},
+            )
+            newPayload = msg.payload.format(targetInfo.name if msg.isGroupMessage else targetInfo.username)
+            m = SysMessageSchema(
+                time=msg.time,
+                type=msg.type,
+                payload=newPayload,
+            )
+            try:
+                await websocket.send_json(m.model_dump())
+            except Exception as e:
+                print("Exception on sending notification message ->", e)
+
+    async def _postOfflineGroupMessages(self,
+                                        groupIDs: list,
+                                        lastSeen: str,
+                                        websocket: WebSocket):
+        '''
+        发送用户离线时收到的消息
+        '''
         for groupID in groupIDs:
             messages = self._groups[groupID].collectionCRUD.queryMany(
                 {"time": {"$gt": lastSeen}},
@@ -118,7 +149,7 @@ class WebsocketConnectionManager:
                 try:
                     await websocket.send_json(m.model_dump())
                 except Exception as e:
-                    print("ERR", e)
+                    print("Exception on sending offline message ->", e)
 
     async def disconnectUser(self,
                              userID: str,
@@ -162,6 +193,22 @@ class WebsocketConnectionManager:
         for userID in groupItem.onlineUserList:
             self._userGroups[userID].remove(groupID)
         del self._groups[groupID]
+
+    async def sendingNotificationMessage(self,
+                                         userID: str,
+                                         replace: str,
+                                         message: NotificationMsgSchema):
+        # NotificationMessage和SystemMessage的区别是前者会存入数据库中而后者不会
+        # 用户离线时的NotificationMessage上线后依旧能收到，SystemMessage只管发不管用户收没收到
+        collection = DB_CRUD(Database.NotificationDB.value, userID, NotificationMsgSchema)
+        collection.add(message.model_dump())
+
+        sysMessage = SysMessageSchema(
+            time=message.time,
+            type=message.type,
+            payload=message.payload.format(replace),
+        )
+        await self.sendingSystemMessage(userID, sysMessage)
 
     async def sendingSystemMessage(self,
                                    userID: str,

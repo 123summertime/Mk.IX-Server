@@ -5,7 +5,9 @@ from schema.storage import StorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP
 
 
-def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+def revokeMessageChecker(userID: str,
+                         groupID: str,
+                         message: GetMessageSchema) -> CheckerState:
     DB = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
     getMessage = DB.query(
         {"time": message.payload.content},
@@ -41,7 +43,9 @@ def revokeMessageChecker(userID: str, groupID: str, message: GetMessageSchema) -
     return CheckerState.NO_PERMISSION
 
 
-def beforeSendingCheck(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+def beforeSendingCheck(userID: str,
+                       groupID: str,
+                       message: GetMessageSchema) -> CheckerState:
     '''
     如有必要，发送消息前对消息进行检查
     '''

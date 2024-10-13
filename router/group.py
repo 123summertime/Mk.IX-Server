@@ -15,7 +15,7 @@ from schema.file import FileInput
 from schema.group import GroupSchema, Info
 from schema.input import GroupA, GroupRegister, GroupAvatar, Reason, GroupName
 from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload, BroadcastMessageSchema
-from schema.storage import RequestMsgSchema, FileStorageSchema
+from schema.storage import RequestMsgSchema, FileStorageSchema, NotificationMsgSchema
 from schema.user import UserSchema
 from utils.crud import ACCOUNT, GROUP, FS, CrudHelpers, GROUP_REQUEST
 from utils.helper import timestamp
@@ -59,6 +59,7 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
     解散群 仅群主可用
     '''
     userInfo, groupInfo = info.userInfo, info.groupInfo
+    time = timestamp()
 
     for objID in groupInfo.user:
         ACCOUNT.update(
@@ -69,9 +70,9 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
         {"group": groupInfo.group}
     )
 
-    # 发送解散群的系统消息
+    # 发送解散群的广播消息
     dismissMessage = BroadcastMessageSchema(
-        time=timestamp(),
+        time=time,
         type=SystemMessageType.SYSTEM.value,
         group=groupInfo.group,
         senderID=userInfo.uuid,
@@ -80,6 +81,19 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
         )
     )
     await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, dismissMessage)
+
+    # 发送解散通知
+    for userObjID in groupInfo.user:
+        targetInfo = CrudHelpers.userObjectIDtoInfo(userObjID)
+        notificationMessage = NotificationMsgSchema(
+            time=time,
+            isGroupMessage=True,
+            target=targetInfo.uuid,
+            blank=groupInfo.group,
+            payload='群"{}"已解散',
+        )
+        await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
+
     await WCM.disconnectGroup(groupInfo.group)
 
     return {"detail": "ok"}
@@ -127,6 +141,7 @@ async def deleteSelf(info: Info = Depends(CheckPermission(PermissionValidate.mem
         {"$pull": {"groups": groupInfo.id}}
     )
 
+    # 广播退群消息
     removeMessage = BroadcastMessageSchema(
         time=timestamp(),
         type=SystemMessageType.SYSTEM.value,
@@ -163,6 +178,7 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
         {"$pull": {"groups": groupInfo.id}}
     )
 
+    # 广播消息
     removeMessage = BroadcastMessageSchema(
         time=timestamp(),
         type=SystemMessageType.SYSTEM.value,
@@ -172,17 +188,28 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
             content=f"{targetInfo.username}已被移出群聊",
         )
     )
-    await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, removeMessage)
+    await WCM.sendingGroupMessage(targetInfo.uuid, groupInfo.group, removeMessage)
+
+    # 向被移除的人发送通知
+    notificationMessage = NotificationMsgSchema(
+        time=timestamp(),
+        isGroupMessage=True,
+        target=targetInfo.uuid,
+        blank=groupInfo.group,
+        payload='你已被移出群"{}"',
+    )
+    await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
+
     await WCM.disconnectUserFromGroup(userInfo.uuid, groupInfo.group)
 
     return {"detail": "ok"}
 
 
 @groupRouter.post("/{group}/members/admin/{uuid}")
-def addAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner)),
-             info2: Info = Depends(CheckTarget(TargetValidate.notOwner,
-                                               TargetValidate.notAdmin,
-                                               TargetValidate.member))):
+async def addAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner)),
+                   info2: Info = Depends(CheckTarget(TargetValidate.notOwner,
+                                                     TargetValidate.notAdmin,
+                                                     TargetValidate.member))):
     '''
     增加管理员，仅群主可用
     '''
@@ -194,12 +221,22 @@ def addAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner)),
         {"$push": {"admin": targetInfo.id}}
     )
 
+    # 发送向目标用户发送通知消息
+    notificationMessage = NotificationMsgSchema(
+        time=timestamp(),
+        isGroupMessage=True,
+        target=targetInfo.uuid,
+        blank=groupInfo.group,
+        payload='你已成为群"{}"的管理员',
+    )
+    await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
+
     return {"detail": "ok"}
 
 
 @groupRouter.delete("/{group}/members/admin/{uuid}")
-def deleteAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner)),
-                info2: Info = Depends(CheckTarget(TargetValidate.admin))):
+async def deleteAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner)),
+                      info2: Info = Depends(CheckTarget(TargetValidate.admin))):
     '''
     删除管理员，仅群主可用
     '''
@@ -210,6 +247,16 @@ def deleteAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner)),
         {"group": groupInfo.group},
         {"$pull": {"admin": targetInfo.id}}
     )
+
+    # 发送向目标用户发送通知消息
+    notificationMessage = NotificationMsgSchema(
+        time=timestamp(),
+        isGroupMessage=True,
+        target=targetInfo.uuid,
+        blank=groupInfo.group,
+        payload='你已被移出群"{}"的管理员',
+    )
+    await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
 
     return {"detail": "ok"}
 
@@ -240,7 +287,7 @@ async def modifyGroupName(newName: GroupName,
         {"$set": {"name": newName.name, "lastUpdate": timestamp()}}
     )
 
-    # 发送修改群名的系统消息
+    # 发送修改群名的广播消息
     message = BroadcastMessageSchema(
         time=timestamp(),
         type=SystemMessageType.SYSTEM.value,
@@ -308,6 +355,8 @@ async def join(answer: GroupA,
         {"$push": {"groups": groupInfo.id}}
     )
 
+    WCM.userJoinedGroup(userInfo.uuid, groupInfo.group)
+
     # 发送用户加入群聊的系统消息
     joinedMessage = BroadcastMessageSchema(
         time=timestamp(),
@@ -318,7 +367,6 @@ async def join(answer: GroupA,
             content=f"{userInfo.username}加入该群",
         )
     )
-    WCM.userJoinedGroup(userInfo.uuid, groupInfo.group)
     await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, joinedMessage)
 
     # 向用户推送入群成功的系统信息
@@ -445,16 +493,16 @@ async def requestAccept(time: str = Path(...),
         {"$set": {"state": currentState}}
     )
 
-    # 如果申请发起的用户在线，推送加群成功的消息
-    sysMessage = SysMessageSchema(
+    # 向用户发送通知消息
+    notificationMessage = NotificationMsgSchema(
         time=timestamp(),
         type=SystemMessageType.JOINED.value,
-        target=groupInfo.group,
-        targetKey=groupInfo.lastUpdate,
-        state=currentState,
-        payload="",
+        isGroupMessage=True,
+        target=targetInfo.uuid,
+        blank=groupInfo.group,
+        payload='你加入群"{}"的申请已通过',
     )
-    await WCM.sendingSystemMessage(requestInfo.senderID, sysMessage)
+    await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
 
     # 向所有管理推送审核结果
     sysMessage = SysMessageSchema(
@@ -509,6 +557,16 @@ async def requestReject(time: str = Path(...),
         {"time": time},
         {"$set": {"state": currentState}}
     )
+
+    # 向用户发送通知消息
+    notificationMessage = NotificationMsgSchema(
+        time=timestamp(),
+        isGroupMessage=True,
+        target=targetInfo.uuid,
+        blank=groupInfo.group,
+        payload='你加入群"{}"的申请已被拒绝',
+    )
+    await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
 
     # 向所有管理推送审核结果
     sysMessage = SysMessageSchema(

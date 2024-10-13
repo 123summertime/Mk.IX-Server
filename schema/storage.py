@@ -2,7 +2,7 @@ from typing import List
 
 from pydantic import BaseModel
 
-from public.stateCode import RequestState
+from public.stateCode import RequestState, SystemMessageType
 from schema.message import MessagePayload
 
 
@@ -34,3 +34,13 @@ class WebsocketTokenSchema(BaseModel):
     uuid: str
     token: str
     device: str
+
+
+class NotificationMsgSchema(BaseModel):
+    time: str
+    type: str = SystemMessageType.NOTICE.value
+    isSystemMessage: bool = True
+    isGroupMessage: bool
+    target: str         # 发送给target
+    blank: str = ""     # 用来填充payload中的{}
+    payload: str

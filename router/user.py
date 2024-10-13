@@ -12,7 +12,7 @@ from schema.group import GroupSchema
 from schema.group import Info
 from schema.input import UserRegister, Reason
 from schema.message import SysMessageSchema, MessagePayload, GetMessageSchema, BroadcastMessageSchema
-from schema.storage import RequestMsgSchema, WebsocketTokenSchema
+from schema.storage import RequestMsgSchema, WebsocketTokenSchema, NotificationMsgSchema
 from schema.user import UserSchema
 from utils.crud import ACCOUNT, GROUP, DB_CRUD, FRIEND_REQUEST, WS_TOKEN, CrudHelpers
 from utils.helper import hashPassword, timestamp, createAccessToken
@@ -289,7 +289,21 @@ async def requestAccept(time: str = Path(...),
         {"$set": {"state": currentState}}
     )
 
-    # 向双方推送加好友成功的消息
+    WCM.userJoinedGroup(requestInfo.senderID, groupID)
+    WCM.userJoinedGroup(requestInfo.target, groupID)
+
+    # 向发起方推送加好友成功的消息
+    notificationMessage = NotificationMsgSchema(
+        time=timestamp(),
+        type=SystemMessageType.FRIENDED.value if requestInfo.senderID in WCM else SystemMessageType.NOTICE.value,
+        isGroupMessage=False,
+        target=requestInfo.senderID,
+        blank=requestInfo.target,
+        payload='"{}"已通过你的好友申请',
+    )
+    await WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage)
+
+    # 向验证方推送加好友成功的消息
     sysMessage = SysMessageSchema(
         time=timestamp(),
         type=SystemMessageType.FRIENDED.value,
@@ -297,12 +311,9 @@ async def requestAccept(time: str = Path(...),
         state=currentState,
         payload=name
     )
-    await WCM.sendingSystemMessage(requestInfo.senderID, sysMessage)
     await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
-    WCM.userJoinedGroup(requestInfo.senderID, groupID)
-    WCM.userJoinedGroup(requestInfo.target, groupID)
 
-    # 推送申请结果
+    # 更新申请结果
     sysMessage = SysMessageSchema(
         time=requestInfo.time,
         type=requestInfo.type,
@@ -349,7 +360,17 @@ async def requestReject(time: str = Path(...),
         {"$set": {"state": currentState}}
     )
 
-    # 推送申请结果
+    # 向发起方推送加好友失败的消息
+    notificationMessage = NotificationMsgSchema(
+        time=timestamp(),
+        isGroupMessage=False,
+        target=requestInfo.senderID,
+        blank=requestInfo.target,
+        payload='"{}"已拒绝你的好友申请',
+    )
+    await WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage)
+
+    # 更新申请结果
     sysMessage = SysMessageSchema(
         time=requestInfo.time,
         type=requestInfo.type,
