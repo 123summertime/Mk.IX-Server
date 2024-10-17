@@ -39,6 +39,7 @@ class WebsocketTokenSchema(BaseModel):
 class NotificationMsgSchema(BaseModel):
     time: str
     type: str = SystemMessageType.NOTICE.value
+    subType: str
     isSystemMessage: bool = True
     isGroupMessage: bool
     target: str         # 发送给target

@@ -10,7 +10,7 @@ from depends.checkPermission import PermissionValidate, TargetValidate, CheckPer
 from depends.getInfo import getGroupInfoWithAvatar, getSelfInfo
 from depends.inputValidate import InputValidate
 from public.const import API, Default, Limits
-from public.stateCode import RequestState, SystemMessageType
+from public.stateCode import RequestState, SystemMessageType, NotificationMsgSubtype
 from schema.file import FileInput
 from schema.group import GroupSchema, Info
 from schema.input import GroupA, GroupRegister, GroupAvatar, Reason, GroupName
@@ -87,6 +87,7 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
         targetInfo = CrudHelpers.userObjectIDtoInfo(userObjID)
         notificationMessage = NotificationMsgSchema(
             time=time,
+            subType=NotificationMsgSubtype.NEGATIVE.value,
             isGroupMessage=True,
             target=targetInfo.uuid,
             blank=groupInfo.group,
@@ -193,14 +194,15 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
     # 向被移除的人发送通知
     notificationMessage = NotificationMsgSchema(
         time=timestamp(),
+        subType=NotificationMsgSubtype.NEGATIVE.value,
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
         payload='你已被移出群"{}"',
     )
-    await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
+    await WCM.sendingNotificationMessage(userInfo.uuid, groupInfo.name, notificationMessage)
 
-    await WCM.disconnectUserFromGroup(userInfo.uuid, groupInfo.group)
+    await WCM.disconnectUserFromGroup(targetInfo.uuid, groupInfo.group)
 
     return {"detail": "ok"}
 
@@ -224,6 +226,7 @@ async def addAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner
     # 发送向目标用户发送通知消息
     notificationMessage = NotificationMsgSchema(
         time=timestamp(),
+        subType=NotificationMsgSubtype.POSITIVE.value,
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
@@ -251,6 +254,7 @@ async def deleteAdmin(info: Info = Depends(CheckPermission(PermissionValidate.ow
     # 发送向目标用户发送通知消息
     notificationMessage = NotificationMsgSchema(
         time=timestamp(),
+        subType=NotificationMsgSubtype.NEGATIVE.value,
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
@@ -493,16 +497,27 @@ async def requestAccept(time: str = Path(...),
         {"$set": {"state": currentState}}
     )
 
+    WCM.userJoinedGroup(targetInfo.uuid, groupInfo.group)
+
     # 向用户发送通知消息
     notificationMessage = NotificationMsgSchema(
         time=timestamp(),
-        type=SystemMessageType.JOINED.value,
+        subType=NotificationMsgSubtype.POSITIVE.value,
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
         payload='你加入群"{}"的申请已通过',
     )
     await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
+    sysMessage = SysMessageSchema(
+        time=timestamp(),
+        type=SystemMessageType.JOINED.value,
+        target=groupInfo.group,
+        targetKey=groupInfo.lastUpdate,
+        state=currentState,
+        payload=""
+    )
+    await WCM.sendingSystemMessage(targetInfo.uuid, sysMessage)
 
     # 向所有管理推送审核结果
     sysMessage = SysMessageSchema(
@@ -530,7 +545,6 @@ async def requestAccept(time: str = Path(...),
         )
     )
     await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, joinedMessage)
-    WCM.userJoinedGroup(targetInfo.uuid, groupInfo.group)
 
     return {"detail": "ok"}
 
@@ -561,6 +575,7 @@ async def requestReject(time: str = Path(...),
     # 向用户发送通知消息
     notificationMessage = NotificationMsgSchema(
         time=timestamp(),
+        subType=NotificationMsgSubtype.NEGATIVE.value,
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,

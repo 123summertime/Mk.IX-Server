@@ -113,6 +113,7 @@ class WebsocketConnectionManager:
             m = SysMessageSchema(
                 time=msg.time,
                 type=msg.type,
+                subType=msg.subType,
                 payload=newPayload,
             )
             try:
@@ -206,6 +207,7 @@ class WebsocketConnectionManager:
         sysMessage = SysMessageSchema(
             time=message.time,
             type=message.type,
+            subType=message.subType,
             payload=message.payload.format(replace),
         )
         await self.sendingSystemMessage(userID, sysMessage)
@@ -221,7 +223,7 @@ class WebsocketConnectionManager:
                                   userID: str,
                                   groupID: str,
                                   message: GetMessageSchema):
-        if userID not in self._userGroups:
+        if userID not in self._userGroups or groupID not in self._userGroups[userID]:
             return
 
         check = beforeSendingCheck(userID, groupID, message)

@@ -139,7 +139,7 @@ class RequestValidate:
     def exist(requestInfo: RequestMsgSchema,
               **kwargs) -> bool:
         if not requestInfo:
-            raise HTTPException(status_code=403, detail="该申请不存在或已过期")
+            raise HTTPException(status_code=404, detail="该申请不存在或已过期")
         if requestInfo.state != RequestState.PENDING.value:
             raise HTTPException(status_code=403, detail="该申请已被处理")
         return True
@@ -160,7 +160,7 @@ class outputFileValidate:
                hashcode: str = Path(...)) -> FileStorageSchema:
         file = FS.query(hashcode)
         if not file:
-            raise HTTPException(status_code=403, detail=f"文件不存在或已过期")
+            raise HTTPException(status_code=404, detail=f"文件不存在或已过期")
         if group not in file.group:
             raise HTTPException(status_code=403, detail=f"文件不属于该群")
         return file

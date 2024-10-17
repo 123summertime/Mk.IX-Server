@@ -7,7 +7,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from depends.checkPermission import CheckRequest, RequestValidate
 from depends.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
 from public.const import API, Auth, Default, Database, Limits
-from public.stateCode import RequestState, SystemMessageType
+from public.stateCode import RequestState, SystemMessageType, NotificationMsgSubtype
 from schema.group import GroupSchema
 from schema.group import Info
 from schema.input import UserRegister, Reason
@@ -85,8 +85,8 @@ def check(newToken=Depends(checker)):
 
 
 @userRouter.get('/wsToken')
-def getWSToken(device: str = Query(...),
-               userInfo: UserSchema = Depends(getSelfInfo)):
+async def getWSToken(device: str = Query(...),
+                     userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     获取websocket连接凭证
     websocket连接必须带上这个wsToken才允许连接，wsToken有效期很短
@@ -95,6 +95,16 @@ def getWSToken(device: str = Query(...),
     deviceID = device if device else str(uuid4().hex)[::4]
     time = timestamp()
     deviceInfo = userInfo.lastSeen
+
+    if deviceID not in deviceInfo:
+        msg = NotificationMsgSchema(
+            time=time,
+            subType=NotificationMsgSubtype.NEUTRAL.value,
+            isGroupMessage=False,
+            target=userInfo.uuid,
+            payload=f"在新设备上登录(设备ID: {deviceID})",
+        )
+        await WCM.sendingNotificationMessage(userInfo.uuid, "", msg)
 
     # 历史登录设备已满，淘汰最久没有使用的设备
     if len(deviceInfo) == Limits.MAX_DEVICE.value:
@@ -260,6 +270,7 @@ async def requestAccept(time: str = Path(...),
     通过好友申请
     '''
     userInfo, targetInfo, requestInfo = info.userInfo, info.targetInfo, info.requestInfo
+    currentTime = timestamp()
     name = f"{targetInfo.username}和{userInfo.username}的群聊"
     currentState = RequestState.ACCEPTED.value
     groupID = str(uuid4().int)[::4]
@@ -267,7 +278,7 @@ async def requestAccept(time: str = Path(...),
         group=groupID,
         name=name,
         avatar=Default.DEFAULT_AVATAR.value,
-        lastUpdate=timestamp(),
+        lastUpdate=currentTime,
         owner=targetInfo.id,
         question={},
         admin=[],
@@ -292,10 +303,10 @@ async def requestAccept(time: str = Path(...),
     WCM.userJoinedGroup(requestInfo.senderID, groupID)
     WCM.userJoinedGroup(requestInfo.target, groupID)
 
-    # 向发起方推送加好友成功的消息
+    # 向发起方推送加好友成功的通知
     notificationMessage = NotificationMsgSchema(
-        time=timestamp(),
-        type=SystemMessageType.FRIENDED.value if requestInfo.senderID in WCM else SystemMessageType.NOTICE.value,
+        time=currentTime,
+        subType=NotificationMsgSubtype.POSITIVE.value,
         isGroupMessage=False,
         target=requestInfo.senderID,
         blank=requestInfo.target,
@@ -303,14 +314,16 @@ async def requestAccept(time: str = Path(...),
     )
     await WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage)
 
-    # 向验证方推送加好友成功的消息
+    # 向双方推送加好友成功的消息
     sysMessage = SysMessageSchema(
-        time=timestamp(),
+        time=currentTime,
         type=SystemMessageType.FRIENDED.value,
         target=groupID,
+        targetKey=time,
         state=currentState,
-        payload=name
+        payload="",
     )
+    await WCM.sendingSystemMessage(requestInfo.senderID, sysMessage)
     await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
 
     # 更新申请结果
@@ -328,7 +341,7 @@ async def requestAccept(time: str = Path(...),
 
     # 在群里发送系统消息
     joinedMessage = BroadcastMessageSchema(
-        time=timestamp(),
+        time=currentTime,
         type=SystemMessageType.SYSTEM.value,
         group=groupID,
         senderID=userInfo.uuid,
@@ -336,7 +349,7 @@ async def requestAccept(time: str = Path(...),
             content="我们已经是好友了，一起来聊天吧！",
         )
     )
-    await WCM.sendingSystemMessage(userInfo.uuid, groupID, joinedMessage)
+    await WCM.sendingGroupMessage(userInfo.uuid, groupID, joinedMessage)
 
     return {"detail": "ok"}
 
@@ -363,6 +376,7 @@ async def requestReject(time: str = Path(...),
     # 向发起方推送加好友失败的消息
     notificationMessage = NotificationMsgSchema(
         time=timestamp(),
+        subType=NotificationMsgSubtype.NEGATIVE.value,
         isGroupMessage=False,
         target=requestInfo.senderID,
         blank=requestInfo.target,

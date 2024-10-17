@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from public.stateCode import RequestState
+from public.stateCode import RequestState, NotificationMsgSubtype
 
 
 class MessagePayload(BaseModel):
@@ -35,6 +35,7 @@ class SendMessageSchema(BaseModel):
 class SysMessageSchema(BaseModel):
     time: str = ""
     type: str
+    subType: str | None = None
     target: str = ""
     targetKey: str = ""
     isSystemMessage: bool = True

@@ -35,3 +35,9 @@ class SystemMessageType(Enum):
     FRIEND = "friend"
     FRIENDED = "friended"
 
+
+class NotificationMsgSubtype(Enum):
+    NIL = "Nil"
+    POSITIVE = "Positive"
+    NEUTRAL = "Neutral"
+    NEGATIVE = "Negative"
