@@ -4,11 +4,42 @@ from datetime import datetime, timezone
 from pydub import AudioSegment
 
 from public.stateCode import CheckerState
-from schema.message import GetMessageSchema
-from utils.crud import FS
+from public.const import Database
+from schema.message import GetMessageSchema, MessagePayload
+from schema.storage import StorageSchema
+from utils.crud import ACCOUNT, FS, DB_CRUD
 
 
-def forwardFileMessageModifier(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+def revokeMessageModifier(userID: str,
+                          groupID: str,
+                          message: GetMessageSchema) -> CheckerState:
+    DB = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
+    time = message.payload.content
+    getMessage = DB.query(
+        {"time": time}
+    )
+    username = ACCOUNT.query(
+        {"uuid": userID},
+        {"username": 1}
+    )
+
+    message.type = "revoke"
+    message.payload = MessagePayload(
+        content=f"{username.username}撤回了一条{'' if userID == getMessage.senderID else '成员'}消息",
+        meta={"time": time},
+    )
+
+    DB.update(
+        {"time": time},
+        {"$set": {"type": message.type, "payload": message.payload.model_dump()}}
+    )
+
+    return CheckerState.OK
+
+
+def forwardFileMessageModifier(userID: str,
+                               groupID: str,
+                               message: GetMessageSchema) -> CheckerState:
     hashcode = message.payload.content
     file = FS.query(hashcode)
     if not file:
@@ -24,7 +55,9 @@ def forwardFileMessageModifier(userID: str, groupID: str, message: GetMessageSch
     return CheckerState.OK
 
 
-def audioFileMessageModifier(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+def audioFileMessageModifier(userID: str,
+                             groupID: str,
+                             message: GetMessageSchema) -> CheckerState:
     hashcode = message.payload.content
     file = FS.query(hashcode)
     if not file:
@@ -47,11 +80,14 @@ def audioFileMessageModifier(userID: str, groupID: str, message: GetMessageSchem
         return CheckerState.UNKNOWN
 
 
-def beforeSendingModify(userID: str, groupID: str, message: GetMessageSchema) -> CheckerState:
+def beforeSendingModify(userID: str,
+                        groupID: str,
+                        message: GetMessageSchema) -> CheckerState:
     '''
     如有必要，发送消息前对消息进行原地修改
     '''
     callFunction = {
+        "revokeRequest": revokeMessageModifier,
         "audio": audioFileMessageModifier,
         "forwardFile": forwardFileMessageModifier,
     }

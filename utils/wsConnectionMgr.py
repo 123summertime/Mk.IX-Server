@@ -4,7 +4,7 @@ from collections import defaultdict
 from fastapi import WebSocket
 
 from public.const import Database, Limits
-from public.stateCode import SystemMessageType
+from public.stateCode import SystemMessageType, CheckerState
 from schema.message import GetMessageSchema, SendMessageSchema, SysMessageSchema
 from schema.storage import StorageSchema, NotificationMsgSchema
 from utils.checker import beforeSendingCheck
@@ -227,7 +227,7 @@ class WebsocketConnectionManager:
             return
 
         check = beforeSendingCheck(userID, groupID, message)
-        modify = beforeSendingModify(userID, groupID, message)
+        modify = beforeSendingModify(userID, groupID, message) if check else check
         result = check and modify
         if not result:
             sysMsg = SysMessageSchema(
@@ -258,14 +258,15 @@ class WebsocketConnectionManager:
                 ws = self._device[device]
                 await ws.send_json(sendMessage)
 
-        storageMessage = StorageSchema(
-            time=message.time,
-            type=message.type,
-            senderID=message.senderID,
-            payload=message.payload,
-        ).model_dump()
+        if message.type != "revoke":
+            storageMessage = StorageSchema(
+                time=message.time,
+                type=message.type,
+                senderID=message.senderID,
+                payload=message.payload,
+            ).model_dump()
 
-        groupItem.collectionCRUD.add(storageMessage)
+            groupItem.collectionCRUD.add(storageMessage)
 
 
 WCM = WebsocketConnectionManager()

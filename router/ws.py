@@ -1,3 +1,5 @@
+import traceback
+
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Header
 
 from depends.getInfo import getSelfInfo, getGroupInfo
@@ -35,5 +37,6 @@ async def websocketConnection(websocket: WebSocket, Sec_Websocket_Protocol=Heade
             )
             await WCM.sendingGroupMessage(info.uuid, message["group"], getMessage)
     except Exception as e:
+        traceback.print_exc()
         print("WCM", e)
         await WCM.disconnectUser(info.uuid, info.device)

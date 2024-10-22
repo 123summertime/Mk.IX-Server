@@ -45,7 +45,7 @@ def revokeMessageChecker(userID: str,
 
 def beforeSendingCheck(userID: str,
                        groupID: str,
-                       message: GetMessageSchema) -> CheckerState:
+                       message: GetMessageSchema | BroadcastMessageSchema) -> CheckerState:
     '''
     如有必要，发送消息前对消息进行检查
     '''
@@ -53,7 +53,7 @@ def beforeSendingCheck(userID: str,
         return CheckerState.NOT_ALLOWED_TYPE
 
     callFunction = {
-        "revoke": revokeMessageChecker,
+        "revokeRequest": revokeMessageChecker,
     }
 
     if message.type not in callFunction:
