@@ -65,4 +65,3 @@ class Reason(BaseModel):
     @validator('reason')
     def validateReason(cls, s):
         return InputValidate.validateStringLength(s, Limits.REASON_LENGTH_RANGE, "申请理由")
-

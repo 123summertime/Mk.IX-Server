@@ -17,7 +17,7 @@ class RequestState(Enum):
 class CheckerState(Enum):
     OK = "OK"
     UNKNOWN = "未知错误"
-    LIMIT_EXCEED = "时长/大小超出限制"
+    LIMIT_EXCEED = "超出服务器限制"
     NOT_EXIST = "不存在或已过期"
     NO_PERMISSION = "没有权限"
     NOT_ALLOWED_TYPE = "不允许的类型"

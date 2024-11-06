@@ -13,7 +13,7 @@ from public.const import API, Default, Limits
 from public.stateCode import RequestState, SystemMessageType, NotificationMsgSubtype
 from schema.file import FileInput
 from schema.group import GroupSchema, Info
-from schema.input import GroupA, GroupRegister, GroupAvatar, Reason, GroupName
+from schema.input import GroupA, GroupQA, GroupRegister, GroupAvatar, Reason, GroupName
 from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload, BroadcastMessageSchema
 from schema.storage import RequestMsgSchema, FileStorageSchema, NotificationMsgSchema
 from schema.user import UserSchema
@@ -49,6 +49,8 @@ def makeGroup(groupRegister: GroupRegister,
         {"uuid": userInfo.uuid},
         {"$push": {"groups": groupObjID}}
     )
+
+    WCM.userJoinedGroup(userInfo.uuid, groupID)
 
     return {"groupID": groupID}
 
@@ -90,8 +92,8 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
             subType=NotificationMsgSubtype.NEGATIVE.value,
             isGroupMessage=True,
             target=targetInfo.uuid,
-            blank=groupInfo.group,
-            payload='群"{}"已解散',
+            blank="",
+            payload=f'群"{groupInfo.name}"已解散',
         )
         await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
 
@@ -200,7 +202,7 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
         blank=groupInfo.group,
         payload='你已被移出群"{}"',
     )
-    await WCM.sendingNotificationMessage(userInfo.uuid, groupInfo.name, notificationMessage)
+    await WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage)
 
     await WCM.disconnectUserFromGroup(targetInfo.uuid, groupInfo.group)
 
@@ -321,12 +323,28 @@ def modifyGroupAvatar(newAvatar: GroupAvatar,
     return {"detail": "ok"}
 
 
+@groupRouter.patch('/{group}/verify/question')
+async def modifyGroupName(groupQA: GroupQA,
+                          info: Info = Depends(CheckPermission(PermissionValidate.admin))):
+    groupInfo = info.groupInfo
+    GROUP.update(
+        {"group": groupInfo.group},
+        {"$set": {"question": {groupQA.Q: groupQA.A}}},
+    )
+
+    return {"detail": "ok"}
+
+
 @groupRouter.get("/{group}/verify/question")
 def joinQuestion(info: Info = Depends(CheckPermission(PermissionValidate.notLimit))):
     '''
     获取群人数及入群问题
     '''
-    groupInfo = info.groupInfo
+    userInfo, groupInfo = info.userInfo, info.groupInfo
+
+    if not groupInfo.question or list(groupInfo.question.keys())[0]:
+        raise HTTPException(status_code=403, detail="该群不允许被搜索")
+
     info = {
         "member": len(groupInfo.user),
         "question": list(groupInfo.question.keys())[0],

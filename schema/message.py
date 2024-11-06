@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from public.stateCode import RequestState, NotificationMsgSubtype
 
@@ -7,7 +7,7 @@ class MessagePayload(BaseModel):
     name: str | None = None
     size: int | None = None
     content: str
-    meta: dict | None = None
+    meta: dict | None = dict()
 
 
 class GetMessageSchema(BaseModel):

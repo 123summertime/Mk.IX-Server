@@ -65,7 +65,7 @@ class GridFS_CRUD():
         if exist:
             self.update(hashcode, {
                 "$set": {"uploadDate": datetime.now(timezone.utc)},
-                "$push": {"group": group},
+                "$addToSet": {"group": group},
             })
         else:
             self._fs.put(file, filename=filename, hash=hashcode, type=contentType, group=[group])

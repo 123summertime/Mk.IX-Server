@@ -10,14 +10,37 @@ from schema.storage import StorageSchema
 from utils.crud import ACCOUNT, FS, DB_CRUD
 
 
+def textMessageModifier(userID: str,
+                        groupID: str,
+                        message: GetMessageSchema) -> CheckerState:
+    # if not message.payload.meta["encrypt"]:
+    #     message.payload.content += "喵"  # 在句尾加"喵"
+    return CheckerState.OK
+
+
+def imageMessageModifier(userID: str,
+                         groupID: str,
+                         message: GetMessageSchema) -> CheckerState:
+    return CheckerState.OK
+
+
 def revokeMessageModifier(userID: str,
                           groupID: str,
                           message: GetMessageSchema) -> CheckerState:
-    DB = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
     time = message.payload.content
+
+    DB = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
     getMessage = DB.query(
         {"time": time}
     )
+    # TODO: 改为ref机制
+    # 如果撤回的是文件/语音，同时修改FS
+    if getMessage.type in ("audio", "file"):
+        FS.update(
+            getMessage.payload.content,
+            {"$pull": {"group": groupID}}
+        )
+
     username = ACCOUNT.query(
         {"uuid": userID},
         {"username": 1}
@@ -45,7 +68,10 @@ def forwardFileMessageModifier(userID: str,
     if not file:
         return CheckerState.NOT_EXIST
 
-    FS.update(hashcode, {"uploadDate": datetime.now(timezone.utc)})
+    FS.update(hashcode, {
+        "$set": {"uploadDate": datetime.now(timezone.utc)},
+        "$addToSet": {"group": groupID}
+    })
 
     message.type = "file"
     message.payload.name = file.name
@@ -71,7 +97,7 @@ def audioFileMessageModifier(userID: str,
         audioChunks = [audio[i: i + chunkLength].rms for i in range(0, len(audio), chunkLength)]
         maxVolume = max(audioChunks)
         volume = [v / maxVolume * 100 // 1 for v in audioChunks]
-        message.payload.meta = {
+        message.payload.meta |= {
             "length": round(len(audio) / 1000, 2),
             "volume": volume
         }
@@ -86,9 +112,16 @@ def beforeSendingModify(userID: str,
     '''
     如有必要，发送消息前对消息进行原地修改
     '''
+    if "at" not in message.payload.meta:
+        message.payload.meta["at"] = []
+    if "encrypt" not in message.payload.meta:
+        message.payload.meta["encrypt"] = False
+
     callFunction = {
-        "revokeRequest": revokeMessageModifier,
+        "text": textMessageModifier,
+        "image": imageMessageModifier,
         "audio": audioFileMessageModifier,
+        "revokeRequest": revokeMessageModifier,
         "forwardFile": forwardFileMessageModifier,
     }
 

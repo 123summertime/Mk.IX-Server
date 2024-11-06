@@ -42,7 +42,27 @@ def register(userRegister: UserRegister):
         groups=[],
     ).model_dump()
     del userInfo["id"]
-    ACCOUNT.add(userInfo)
+    userObjID = ACCOUNT.add(userInfo)
+
+    # 注册就送文件传输助手群
+    groupID = str(uuid4().int)[::4]
+    newGroup = GroupSchema(
+        group=groupID,
+        name="文件传输助手",
+        avatar=Default.DEFAULT_AVATAR.value,
+        lastUpdate=time,
+        owner=userObjID,
+        question={},
+        admin=[],
+        user=[userObjID],
+    ).model_dump()
+    del newGroup["id"]
+
+    groupObjID = GROUP.add(newGroup).inserted_id
+    ACCOUNT.update(
+        {"uuid": userID},
+        {"$push": {"groups": groupObjID}}
+    )
 
     return {"uuid": userID}
 
@@ -281,7 +301,7 @@ async def requestAccept(time: str = Path(...),
         lastUpdate=currentTime,
         owner=targetInfo.id,
         question={},
-        admin=[],
+        admin=[userInfo.id],
         user=[targetInfo.id, userInfo.id],
     ).model_dump()
     del newGroup["id"]

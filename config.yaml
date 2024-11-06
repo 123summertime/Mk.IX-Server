@@ -1,7 +1,7 @@
 Database:
   HOST: localhost
   PORT: 27017
-  MAX_POOL_SIZE: 50
+  MAX_POOL_SIZE: 100
 
 Auth:
   SECRET_KEY: hw4jf6uz8o4na1rc3pf9yxr8fn3gft3m  # JWT密钥
@@ -18,15 +18,18 @@ Limits:
   AVATAR_SIZE_RANGE:           # 头像大小限制 默认[0, 1024] 单位: KB
     MIN: 0
     MAX: 1024
-  REASON_LENGTH_RANGE:         # 申请理由/入群问题回答长度限制 默认[0, 64]
+  REASON_LENGTH_RANGE:         # 申请理由/入群问题回答长度限制 默认[0, 32]
     MIN: 0
-    MAX: 64
+    MAX: 32
   USER_NAME_LENGTH_RANGE:      # 用户昵称长度限制 默认[1, 16]
     MIN: 1
     MAX: 16
   USER_PASSWORD_LENGTH_RANGE:  # 用户密码长度限制 默认[6, 16]
     MIN: 6
     MAX: 16
+  USER_BIO_LENGTH_RANGE:       # 用户Bio长度限制 默认[0, 64]
+    MIN: 0
+    MAX: 64
   GROUP_NAME_LENGTH_RANGE:     # 群名长度限制 默认[1, 16]
     MIN: 1
     MAX: 16
@@ -36,9 +39,15 @@ Limits:
   GROUP_AUDIO_LENGTH_RANGE:    # 语音消息长度限制 默认[1, 50] 单位: 秒
     MIN: 1
     MAX: 50
-  GROUP_FILE_SIZE_RANGE:       # 群文件大小限制 默认[0, 102400] 单位: KB
+  GROUP_FILE_SIZE_RANGE:       # 群文件大小限制 默认[0, 1024000] 单位: KB
     MIN: 0
-    MAX: 102400
+    MAX: 1024000
+  GROUP_TEXT_LENGTH_RANGE:     # 发送文本信息的最大长度 默认[0, 1024]
+    MIN: 1
+    MAX: 1024
+  GROUP_IMAGE_SIZE_RANGE:      # 发送图片信息的最大大小 默认[0, 1024] 单位: KB  (前端会转换为webp再发送，4K图片也只有100多KB)
+    MIN: 0
+    MAX: 1024
   REQUEST_EXPIRE_MINUTES: 10080       # 申请过期时间(入群申请，好友申请) 默认10080 单位：分钟
   NOTIFICATION_EXPIRE_MINUTES: 10080  # 通知过期时间(如被移除管理员的通知) 默认10080 单位: 分钟
   MAX_DEVICE: 6                       # 最大设备数 默认6 (默认最多只能在6台设备上登录，超过优先淘汰最久未登录的设备，如果被淘汰，那么用这台设备再次登录不会再接收到未登录期间的消息)

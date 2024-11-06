@@ -105,16 +105,22 @@ class WebsocketConnectionManager:
         )
 
         for msg in messages:
-            targetInfo = (GROUP if msg.isGroupMessage else ACCOUNT).query(
-                {("group" if msg.isGroupMessage else "uuid"): msg.blank},
-                {("name" if msg.isGroupMessage else "username"): 1},
-            )
-            newPayload = msg.payload.format(targetInfo.name if msg.isGroupMessage else targetInfo.username)
+            if msg.blank:
+                targetInfo = (GROUP if msg.isGroupMessage else ACCOUNT).query(
+                    {("group" if msg.isGroupMessage else "uuid"): msg.blank},
+                    {("name" if msg.isGroupMessage else "username"): 1},
+                )
+                if not targetInfo:
+                    name = ""
+                else:
+                    name = targetInfo.name if msg.isGroupMessage else targetInfo.username
+                msg.payload = msg.payload.format(name)
+
             m = SysMessageSchema(
                 time=msg.time,
                 type=msg.type,
                 subType=msg.subType,
-                payload=newPayload,
+                payload=msg.payload,
             )
             try:
                 await websocket.send_json(m.model_dump())

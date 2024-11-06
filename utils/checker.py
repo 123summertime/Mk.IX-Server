@@ -1,8 +1,39 @@
+import base64
+
 from public.const import Database, Limits
 from public.stateCode import CheckerState
 from schema.message import GetMessageSchema, BroadcastMessageSchema
 from schema.storage import StorageSchema
 from utils.crud import DB_CRUD, ACCOUNT, GROUP
+
+
+def textMessageChecker(userID: str,
+                       groupID: str,
+                       message: GetMessageSchema) -> CheckerState:
+    limit = Limits.GROUP_TEXT_LENGTH_RANGE.value
+    if message.payload.meta.get("encrypt", False):
+        limit['MAX'] += 32  # 加密后字符串稍长
+    if not limit['MIN'] <= len(message.payload.content) <= limit['MAX']:
+        return CheckerState.LIMIT_EXCEED
+    return CheckerState.OK
+
+
+def imageMessageChecker(userID: str,
+                        groupID: str,
+                        message: GetMessageSchema) -> CheckerState:
+    limit = Limits.GROUP_IMAGE_SIZE_RANGE.value
+    # 初步判定大小 1KB文件编码后约为1400字符
+    if len(message.payload.content) > limit['MAX'] * 1400:
+        return CheckerState.LIMIT_EXCEED
+    if message.payload.meta.get("encrypt", False):
+        return CheckerState.OK
+    try:
+        imageDecode = base64.b64decode(message.payload.content.split(',')[1])
+    except Exception as e:
+        return CheckerState.UNKNOWN
+    if not (limit['MIN'] <= len(imageDecode) // 1024 <= limit['MAX']):
+        return CheckerState.LIMIT_EXCEED
+    return CheckerState.OK
 
 
 def revokeMessageChecker(userID: str,
@@ -53,7 +84,10 @@ def beforeSendingCheck(userID: str,
         return CheckerState.NOT_ALLOWED_TYPE
 
     callFunction = {
+        "text": textMessageChecker,
+        "image": imageMessageChecker,
         "revokeRequest": revokeMessageChecker,
+        # 对audio和file的检查已在depends/inputValidate.py里验证过 这里仅检查通过ws传入的信息
     }
 
     if message.type not in callFunction:
