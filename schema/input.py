@@ -6,17 +6,28 @@ from public.const import Limits
 # 处理用户简单数据类型的Model
 
 
-class UserRegister(BaseModel):
+class Username(BaseModel):
     name: str
-    password: str
 
     @validator('name')
     def validateName(cls, s):
         return InputValidate.validateStringLength(s, Limits.USER_NAME_LENGTH_RANGE, "昵称")
 
+
+class UserRegister(Username):
+    password: str
+
     @validator('password')
     def validatePassword(cls, s):
         return InputValidate.validateStringLength(s, Limits.USER_PASSWORD_LENGTH_RANGE, "密码")
+
+
+class Bio(BaseModel):
+    bio: str
+
+    @validator('bio')
+    def validateBio(cls, s):
+        return InputValidate.validateStringLength(s, Limits.USER_BIO_LENGTH_RANGE, "简介")
 
 
 class GroupA(BaseModel):
@@ -51,7 +62,7 @@ class GroupName(BaseModel):
         return InputValidate.validateStringLength(s, Limits.GROUP_NAME_LENGTH_RANGE, "群名")
 
 
-class GroupAvatar(BaseModel):
+class Avatar(BaseModel):
     avatar: str
 
     @validator('avatar')

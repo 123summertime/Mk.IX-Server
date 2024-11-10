@@ -1,4 +1,4 @@
-from typing import List
+from typing import Any, Dict
 
 from pydantic import BaseModel
 
@@ -16,8 +16,8 @@ class StorageSchema(BaseModel):
 class FileStorageSchema(BaseModel):
     name: str
     type: str
-    group: List[str] = []
-    file: bytes
+    group: Dict[str, int] = dict()
+    file: Any   # GridOut
 
 
 class RequestMsgSchema(BaseModel):

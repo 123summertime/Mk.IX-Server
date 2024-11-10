@@ -33,12 +33,11 @@ def revokeMessageModifier(userID: str,
     getMessage = DB.query(
         {"time": time}
     )
-    # TODO: 改为ref机制
-    # 如果撤回的是文件/语音，同时修改FS
     if getMessage.type in ("audio", "file"):
+        hashcode = getMessage.payload.content
         FS.update(
-            getMessage.payload.content,
-            {"$pull": {"group": groupID}}
+            hashcode,
+            {"$inc": {f"group.{groupID}": -1}}
         )
 
     username = ACCOUNT.query(
@@ -70,12 +69,12 @@ def forwardFileMessageModifier(userID: str,
 
     FS.update(hashcode, {
         "$set": {"uploadDate": datetime.now(timezone.utc)},
-        "$addToSet": {"group": groupID}
+        "$inc": {f"group.{groupID}": 1}
     })
 
     message.type = "file"
     message.payload.name = file.name
-    message.payload.size = len(file.file)
+    message.payload.size = file.file.length
     message.payload.content = hashcode
 
     return CheckerState.OK
@@ -91,7 +90,7 @@ def audioFileMessageModifier(userID: str,
 
     # 将语音分为chunkCount段，获取每段的音量大小，放入meta字段中
     try:
-        audio = AudioSegment.from_file(io.BytesIO(file.file))
+        audio = AudioSegment.from_file(file.file.read())
         chunkCount = min(50, (len(audio) // 1000) + 2)
         chunkLength = len(audio) // chunkCount
         audioChunks = [audio[i: i + chunkLength].rms for i in range(0, len(audio), chunkLength)]

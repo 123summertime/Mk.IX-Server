@@ -13,7 +13,7 @@ from public.const import API, Default, Limits
 from public.stateCode import RequestState, SystemMessageType, NotificationMsgSubtype
 from schema.file import FileInput
 from schema.group import GroupSchema, Info
-from schema.input import GroupA, GroupQA, GroupRegister, GroupAvatar, Reason, GroupName
+from schema.input import GroupA, GroupQA, GroupRegister, Avatar, Reason, GroupName
 from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload, BroadcastMessageSchema
 from schema.storage import RequestMsgSchema, FileStorageSchema, NotificationMsgSchema
 from schema.user import UserSchema
@@ -309,7 +309,7 @@ async def modifyGroupName(newName: GroupName,
 
 
 @groupRouter.patch('/{group}/info/avatar')
-def modifyGroupAvatar(newAvatar: GroupAvatar,
+def modifyGroupAvatar(newAvatar: Avatar,
                       info: Info = Depends(CheckPermission(PermissionValidate.admin))):
     '''
     修改群头像 管理员权限
@@ -324,8 +324,8 @@ def modifyGroupAvatar(newAvatar: GroupAvatar,
 
 
 @groupRouter.patch('/{group}/verify/question')
-async def modifyGroupName(groupQA: GroupQA,
-                          info: Info = Depends(CheckPermission(PermissionValidate.admin))):
+async def modifyGroupQA(groupQA: GroupQA,
+                        info: Info = Depends(CheckPermission(PermissionValidate.admin))):
     groupInfo = info.groupInfo
     GROUP.update(
         {"group": groupInfo.group},
@@ -646,9 +646,15 @@ async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidat
 
 
 @groupRouter.get('/{group}/download/{hashcode}')
-def downloadFile(info: Info = Depends(CheckPermission(PermissionValidate.member)),
-                 file: FileStorageSchema = Depends(outputFileValidate.exists)):
-    res = StreamingResponse(io.BytesIO(file.file), media_type=file.type)
+async def downloadFile(info: Info = Depends(CheckPermission(PermissionValidate.member)),
+                       file: FileStorageSchema = Depends(outputFileValidate.exists)):
+    READ_SIZE = 1024 * 1024  # 1MB
+
+    def iter():
+        while chunk := file.file.read(READ_SIZE):
+            yield chunk
+
+    res = StreamingResponse(iter(), media_type=file.type)
     res.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file.name)}"
-    res.headers["Content-Length"] = str(len(file.file))
+    res.headers["Content-Length"] = str(file.file.length)
     return res

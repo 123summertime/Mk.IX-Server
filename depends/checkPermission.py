@@ -161,7 +161,7 @@ class outputFileValidate:
         file = FS.query(hashcode)
         if not file:
             raise HTTPException(status_code=404, detail=f"文件不存在或已过期")
-        if group not in file.group:
+        if group not in file.group or file.group[group] <= 0:
             raise HTTPException(status_code=403, detail=f"文件不属于该群")
         return file
 

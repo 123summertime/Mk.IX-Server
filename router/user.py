@@ -10,7 +10,7 @@ from public.const import API, Auth, Default, Database, Limits
 from public.stateCode import RequestState, SystemMessageType, NotificationMsgSubtype
 from schema.group import GroupSchema
 from schema.group import Info
-from schema.input import UserRegister, Reason
+from schema.input import UserRegister, Reason, Avatar, Username, Bio
 from schema.message import SysMessageSchema, MessagePayload, GetMessageSchema, BroadcastMessageSchema
 from schema.storage import RequestMsgSchema, WebsocketTokenSchema, NotificationMsgSchema
 from schema.user import UserSchema
@@ -202,6 +202,39 @@ def getUserCurrentInfo(userInfo: UserSchema = Depends(getUserInfo)):
         "lastUpdate": userInfo.lastUpdate,
     }
     return info
+
+
+@userRouter.patch('/{uuid}/profile/avatar')
+def modifyUserAvatar(newAvatar: Avatar,
+                     userInfo: UserSchema = Depends(getSelfInfo)):
+    ACCOUNT.update(
+        {"uuid": userInfo.uuid},
+        {"$set": {"avatar": newAvatar.avatar, "lastUpdate": timestamp()}}
+    )
+
+    return {"detail": "ok"}
+
+
+@userRouter.patch('/{uuid}/profile/username')
+def modifyUsername(newName: Username,
+                   userInfo: UserSchema = Depends(getSelfInfo)):
+    ACCOUNT.update(
+        {"uuid": userInfo.uuid},
+        {"$set": {"username": newName.name, "lastUpdate": timestamp()}}
+    )
+
+    return {"detail": "ok"}
+
+
+@userRouter.patch('/{uuid}/profile/bio')
+def modifyUserBio(bio: Bio,
+                  userInfo: UserSchema = Depends(getSelfInfo)):
+    ACCOUNT.update(
+        {"uuid": userInfo.uuid},
+        {"$set": {"bio": bio.bio}}
+    )
+
+    return {"detail": "ok"}
 
 
 @userRouter.post('/{uuid}/verify/request')

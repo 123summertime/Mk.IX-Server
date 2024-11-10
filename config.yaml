@@ -27,9 +27,9 @@ Limits:
   USER_PASSWORD_LENGTH_RANGE:  # 用户密码长度限制 默认[6, 16]
     MIN: 6
     MAX: 16
-  USER_BIO_LENGTH_RANGE:       # 用户Bio长度限制 默认[0, 64]
+  USER_BIO_LENGTH_RANGE:       # 用户Bio长度限制 默认[0, 32]
     MIN: 0
-    MAX: 64
+    MAX: 32
   GROUP_NAME_LENGTH_RANGE:     # 群名长度限制 默认[1, 16]
     MIN: 1
     MAX: 16
@@ -39,9 +39,9 @@ Limits:
   GROUP_AUDIO_LENGTH_RANGE:    # 语音消息长度限制 默认[1, 50] 单位: 秒
     MIN: 1
     MAX: 50
-  GROUP_FILE_SIZE_RANGE:       # 群文件大小限制 默认[0, 1024000] 单位: KB
+  GROUP_FILE_SIZE_RANGE:       # 群文件大小限制 默认[0, 512000] 单位: KB
     MIN: 0
-    MAX: 1024000
+    MAX: 512000
   GROUP_TEXT_LENGTH_RANGE:     # 发送文本信息的最大长度 默认[0, 1024]
     MIN: 1
     MAX: 1024
