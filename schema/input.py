@@ -14,8 +14,21 @@ class Username(BaseModel):
         return InputValidate.validateStringLength(s, Limits.USER_NAME_LENGTH_RANGE, "昵称")
 
 
-class UserRegister(Username):
+class Password(BaseModel):
     password: str
+
+    @validator('password')
+    def validatePassword(cls, s):
+        return InputValidate.validateStringLength(s, Limits.USER_PASSWORD_LENGTH_RANGE, "密码")
+
+
+class UserRegister(BaseModel):
+    name: str
+    password: str
+
+    @validator('name')
+    def validateName(cls, s):
+        return InputValidate.validateStringLength(s, Limits.USER_NAME_LENGTH_RANGE, "昵称")
 
     @validator('password')
     def validatePassword(cls, s):

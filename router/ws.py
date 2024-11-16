@@ -3,8 +3,9 @@ import traceback
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketException, Header, WebSocketDisconnect
 
 from depends.getInfo import getSelfInfo, getGroupInfo
-from public.const import Auth
-from schema.message import GetMessageSchema, MessagePayload
+from public.const import Auth, API
+from public.stateCode import SystemMessageType
+from schema.message import GetMessageSchema, MessagePayload, SysMessageSchema
 from utils.crud import WS_TOKEN
 from utils.helper import timestamp
 from utils.wsConnectionMgr import WCM
@@ -24,24 +25,35 @@ async def websocketConnection(websocket: WebSocket, Sec_Websocket_Protocol=Heade
     WS_TOKEN.delete({"token": token})
     await WCM.connect(info.uuid, info.device, websocket, token)
 
+    API.LOGGER.value.info(f"{info.uuid} 在 {info.device}设备 上线")
+
     try:
         while True:
-            message = await websocket.receive_json()
-            print(f"User:{info.uuid} Group:{message['group']} Type:{message['type']} Payload:{message['payload']['content'][:30]}")
-            getMessage = GetMessageSchema(
-                time=timestamp(),
-                type=message["type"],
-                group=message["group"],
-                senderID=info.uuid,
-                payload=MessagePayload.model_validate(message["payload"])
-            )
-            if not getMessage.payload.meta:
-                getMessage.payload.meta = dict()
-            await WCM.sendingGroupMessage(info.uuid, message["group"], getMessage)
+            try:
+                message = await websocket.receive_json()
+                time = timestamp()
+                API.LOGGER.value.info(f"{info.uuid} 在 {message['group']} 发送了 {message['type']} 类型的消息({time})")
+                getMessage = GetMessageSchema(
+                    time=time,
+                    type=message["type"],
+                    group=message["group"],
+                    senderID=info.uuid,
+                    payload=MessagePayload.model_validate(message["payload"])
+                )
+                if not getMessage.payload.meta:
+                    getMessage.payload.meta = dict()
+                await WCM.sendingGroupMessage(info.uuid, message["group"], getMessage)
+            except HTTPException:
+                print("Rate Limit", info.uuid)
+                sysMsg = SysMessageSchema(
+                    time=timestamp(),
+                    type=SystemMessageType.FAIL.value,
+                    payload="发送速度过快，请稍后再试",
+                )
+                await WCM.sendingSystemMessage(info.uuid, sysMsg)
     except WebSocketDisconnect:
-        print("WCM", info.uuid, info.device)
         await WCM.disconnectUser(info.uuid, info.device)
+        API.LOGGER.value.info(f"{info.uuid} 在 {info.device} 设备 下线")
     except Exception as e:
-        traceback.print_exc()
-        print("WCM", e)
-
+        error = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+        API.LOGGER.value.error(f"wsConnectionMgr出现错误: {error}")

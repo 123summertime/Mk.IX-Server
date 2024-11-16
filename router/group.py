@@ -1,8 +1,7 @@
-import io
 from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from fastapi.responses import StreamingResponse
 
 from depends.checkPermission import PermissionValidate, TargetValidate, CheckPermission, RequestValidate, CheckTarget, \
@@ -19,14 +18,16 @@ from schema.storage import RequestMsgSchema, FileStorageSchema, NotificationMsgS
 from schema.user import UserSchema
 from utils.crud import ACCOUNT, GROUP, FS, CrudHelpers, GROUP_REQUEST
 from utils.helper import timestamp
+from utils.rateLimit import rateLimit
 from utils.wsConnectionMgr import WCM
 
 groupRouter = APIRouter(prefix=f"/{API.VERSION.value}/group", tags=['Group'])
 
 
 @groupRouter.post("/register")
-def makeGroup(groupRegister: GroupRegister,
-              userInfo: UserSchema = Depends(getSelfInfo)):
+@rateLimit(5, 30)
+async def makeGroup(groupRegister: GroupRegister,
+                    userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     创建群
     '''
@@ -56,6 +57,7 @@ def makeGroup(groupRegister: GroupRegister,
 
 
 @groupRouter.delete('/{group}')
+@rateLimit(10, 30)
 async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.owner))):
     '''
     解散群 仅群主可用
@@ -103,7 +105,8 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
 
 
 @groupRouter.get('/{group}/members')
-def getMembersInfo(info: Info = Depends(CheckPermission(PermissionValidate.member))):
+@rateLimit(10, 30)
+async def getMembersInfo(info: Info = Depends(CheckPermission(PermissionValidate.member))):
     '''
     获取群成员信息 群员权限
     '''
@@ -114,7 +117,7 @@ def getMembersInfo(info: Info = Depends(CheckPermission(PermissionValidate.membe
 
 
 @groupRouter.get('/{group}/members/admin')
-def getAdminInfo(info: Info = Depends(CheckPermission(PermissionValidate.notLimit))):
+async def getAdminInfo(info: Info = Depends(CheckPermission(PermissionValidate.notLimit))):
     '''
     获取群主+管理员信息 需要登录
     '''
@@ -128,6 +131,7 @@ def getAdminInfo(info: Info = Depends(CheckPermission(PermissionValidate.notLimi
 
 
 @groupRouter.delete("/{group}/members/me")
+@rateLimit(10, 30)
 async def deleteSelf(info: Info = Depends(CheckPermission(PermissionValidate.member,
                                                           PermissionValidate.notOwner))):
     '''
@@ -161,6 +165,7 @@ async def deleteSelf(info: Info = Depends(CheckPermission(PermissionValidate.mem
 
 
 @groupRouter.delete("/{group}/members/{uuid}")
+@rateLimit(30, 30)
 async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.admin)),
                      info2: Info = Depends(CheckTarget(TargetValidate.member,
                                                        TargetValidate.notSelf,
@@ -210,6 +215,7 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
 
 
 @groupRouter.post("/{group}/members/admin/{uuid}")
+@rateLimit(30, 30)
 async def addAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner)),
                    info2: Info = Depends(CheckTarget(TargetValidate.notOwner,
                                                      TargetValidate.notAdmin,
@@ -240,6 +246,7 @@ async def addAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner
 
 
 @groupRouter.delete("/{group}/members/admin/{uuid}")
+@rateLimit(30, 30)
 async def deleteAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner)),
                       info2: Info = Depends(CheckTarget(TargetValidate.admin))):
     '''
@@ -268,7 +275,7 @@ async def deleteAdmin(info: Info = Depends(CheckPermission(PermissionValidate.ow
 
 
 @groupRouter.get('/{group}/info')
-def getInfo(groupInfo: GroupSchema = Depends(getGroupInfoWithAvatar)):
+async def getInfo(groupInfo: GroupSchema = Depends(getGroupInfoWithAvatar)):
     '''
     获取群信息
     '''
@@ -309,8 +316,9 @@ async def modifyGroupName(newName: GroupName,
 
 
 @groupRouter.patch('/{group}/info/avatar')
-def modifyGroupAvatar(newAvatar: Avatar,
-                      info: Info = Depends(CheckPermission(PermissionValidate.admin))):
+@rateLimit(10, 120)
+async def modifyGroupAvatar(newAvatar: Avatar,
+                            info: Info = Depends(CheckPermission(PermissionValidate.admin))):
     '''
     修改群头像 管理员权限
     '''
@@ -324,6 +332,7 @@ def modifyGroupAvatar(newAvatar: Avatar,
 
 
 @groupRouter.patch('/{group}/verify/question')
+@rateLimit(10, 30)
 async def modifyGroupQA(groupQA: GroupQA,
                         info: Info = Depends(CheckPermission(PermissionValidate.admin))):
     groupInfo = info.groupInfo
@@ -336,13 +345,13 @@ async def modifyGroupQA(groupQA: GroupQA,
 
 
 @groupRouter.get("/{group}/verify/question")
-def joinQuestion(info: Info = Depends(CheckPermission(PermissionValidate.notLimit))):
+@rateLimit(10, 30)
+async def joinQuestion(info: Info = Depends(CheckPermission(PermissionValidate.notLimit))):
     '''
     获取群人数及入群问题
     '''
     userInfo, groupInfo = info.userInfo, info.groupInfo
-
-    if not groupInfo.question or list(groupInfo.question.keys())[0]:
+    if not groupInfo.question or not list(groupInfo.question.keys())[0]:
         raise HTTPException(status_code=403, detail="该群不允许被搜索")
 
     info = {
@@ -354,6 +363,7 @@ def joinQuestion(info: Info = Depends(CheckPermission(PermissionValidate.notLimi
 
 
 @groupRouter.post("/{group}/verify/answer")
+@rateLimit(10, 120)
 async def join(answer: GroupA,
                info: Info = Depends(CheckPermission(PermissionValidate.notMember))):
     '''
@@ -405,6 +415,7 @@ async def join(answer: GroupA,
 
 
 @groupRouter.post('/{group}/verify/request')
+@rateLimit(10, 30)
 async def joinRequest(reason: Reason,
                       info: Info = Depends(CheckPermission(PermissionValidate.notMember)),
                       info2: Info = Depends(
@@ -482,6 +493,7 @@ async def queryJoinRequest(group: str = Path(...),
 
 
 @groupRouter.post('/{group}/verify/request/{time}')
+@rateLimit(30, 30)
 async def requestAccept(time: str = Path(...),
                         info: Info = Depends(CheckPermission(PermissionValidate.admin)),
                         info2: Info = Depends(
@@ -568,6 +580,7 @@ async def requestAccept(time: str = Path(...),
 
 
 @groupRouter.delete('/{group}/verify/request/{time}')
+@rateLimit(30, 30)
 async def requestReject(time: str = Path(...),
                         info: Info = Depends(CheckPermission(PermissionValidate.admin)),
                         info2: Info = Depends(
@@ -620,17 +633,19 @@ async def requestReject(time: str = Path(...),
 
 
 @groupRouter.post('/{group}/upload')
+@rateLimit(10, 30)
 async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidate.member)),
                           fileInput: FileInput = Depends(InputValidate.validateInputFile)):
     '''
     上传文件
     '''
+    time = timestamp()
     fileName, fileType, content = fileInput.fileName, fileInput.fileType, fileInput.content
     groupInfo, userInfo = info.groupInfo, info.userInfo
     hashcode = FS.add(content, fileName, fileType, groupInfo.group)
 
     message = GetMessageSchema(
-        time=timestamp(),
+        time=time,
         type=fileType,
         group=groupInfo.group,
         senderID=userInfo.uuid,
@@ -642,10 +657,12 @@ async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidat
     )
     await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, message)
 
+    API.LOGGER.value.info(f"{userInfo.uuid} 在 {groupInfo.group} 发送了 {fileType} 类型的消息({time})")
     return {"detail": "ok"}
 
 
 @groupRouter.get('/{group}/download/{hashcode}')
+@rateLimit(30, 30)
 async def downloadFile(info: Info = Depends(CheckPermission(PermissionValidate.member)),
                        file: FileStorageSchema = Depends(outputFileValidate.exists)):
     READ_SIZE = 1024 * 1024  # 1MB

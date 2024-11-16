@@ -1,4 +1,6 @@
 from enum import Enum
+import logging
+from logging.handlers import TimedRotatingFileHandler
 
 import pymongo
 import yaml
@@ -12,9 +14,23 @@ auth = config['Auth']
 default = config['Default']
 limits = config['Limits']
 
+log_handler = TimedRotatingFileHandler(
+    filename="Log.log",
+    when="midnight",
+    interval=1,
+    backupCount=7,
+    encoding="utf-8"
+)
+log_handler.setFormatter(logging.Formatter("%(levelname)s - %(asctime)s - %(message)s"))  # noqa
+logger = logging.getLogger("logger")
+logger.setLevel(logging.INFO)
+logger.addHandler(log_handler)
+logger.addHandler(logging.StreamHandler())
+
 
 class API(Enum):
     VERSION = "v1"
+    LOGGER = logger
 
 
 class Database(Enum):
@@ -63,7 +79,7 @@ class Limits(Enum):
     AVATAR_SIZE_RANGE = limits['AVATAR_SIZE_RANGE']
     REASON_LENGTH_RANGE = limits['REASON_LENGTH_RANGE']
     USER_NAME_LENGTH_RANGE = limits['USER_NAME_LENGTH_RANGE']
-    USER_PASSWORD_LENGTH_RANGE = limits['USER_PASSWORD_LENGTH_RANGE']
+    USER_PASSWORD_LENGTH_RANGE = {"MIN": 32, "MAX": 32}  # MD5的长度
     USER_BIO_LENGTH_RANGE = limits['USER_BIO_LENGTH_RANGE']
     GROUP_NAME_LENGTH_RANGE = limits['GROUP_NAME_LENGTH_RANGE']
     GROUP_QA_LENGTH_RANGE = limits['GROUP_QA_LENGTH_RANGE']
@@ -71,10 +87,12 @@ class Limits(Enum):
     GROUP_FILE_SIZE_RANGE = limits['GROUP_FILE_SIZE_RANGE']
     GROUP_TEXT_LENGTH_RANGE = limits['GROUP_TEXT_LENGTH_RANGE']
     GROUP_IMAGE_SIZE_RANGE = limits['GROUP_IMAGE_SIZE_RANGE']
+    MESSAGE_EXPIRE_MINUTES = limits['MESSAGE_EXPIRE_MINUTES']
     REQUEST_EXPIRE_MINUTES = limits['REQUEST_EXPIRE_MINUTES']
     NOTIFICATION_EXPIRE_MINUTES = limits['NOTIFICATION_EXPIRE_MINUTES']
     MAX_DEVICE = limits['MAX_DEVICE']
     MAX_ONLINE_DEVICE = limits['MAX_ONLINE_DEVICE']
+    MESSAGE_RATE = limits['MESSAGE_RATE']
 
     FILE_TYPE = {"file", "audio"}  # 允许上传的文件类型
     MESSAGE_TYPE = {"text", "image", "file", "audio", "forwardFile", "revokeRequest"}   # 所有可发送的消息类型

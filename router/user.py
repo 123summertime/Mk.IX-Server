@@ -1,7 +1,7 @@
 from datetime import timedelta
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
 from depends.checkPermission import CheckRequest, RequestValidate
@@ -10,10 +10,11 @@ from public.const import API, Auth, Default, Database, Limits
 from public.stateCode import RequestState, SystemMessageType, NotificationMsgSubtype
 from schema.group import GroupSchema
 from schema.group import Info
-from schema.input import UserRegister, Reason, Avatar, Username, Bio
+from schema.input import UserRegister, Reason, Avatar, Username, Bio, Password
 from schema.message import SysMessageSchema, MessagePayload, GetMessageSchema, BroadcastMessageSchema
 from schema.storage import RequestMsgSchema, WebsocketTokenSchema, NotificationMsgSchema
 from schema.user import UserSchema
+from utils.rateLimit import rateLimit
 from utils.crud import ACCOUNT, GROUP, DB_CRUD, FRIEND_REQUEST, WS_TOKEN, CrudHelpers
 from utils.helper import hashPassword, timestamp, createAccessToken
 from utils.wsConnectionMgr import WCM
@@ -22,27 +23,29 @@ userRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
 
 
 @userRouter.post('/register')
-def register(userRegister: UserRegister):
+@rateLimit(5, 60)
+async def register(request: Request,
+                   userRegister: UserRegister):
     '''
     用户注册
     '''
-    userName, password = userRegister.name, userRegister.password
+    username, password = userRegister.name, userRegister.password
     hashedPassword = hashPassword(password)
     time = timestamp()
 
     userID = str(uuid4().int)[::4]
     userInfo = UserSchema(
         uuid=userID,
-        userName=userName,
+        username=username,
         password=hashedPassword,
         avatar=Default.DEFAULT_AVATAR.value,
         bio=Default.DEFAULT_BIO.value,
-        lastSeen=time,
+        lastSeen={},
         lastUpdate=time,
         groups=[],
     ).model_dump()
     del userInfo["id"]
-    userObjID = ACCOUNT.add(userInfo)
+    userObjID = ACCOUNT.add(userInfo).inserted_id
 
     # 注册就送文件传输助手群
     groupID = str(uuid4().int)[::4]
@@ -63,6 +66,8 @@ def register(userRegister: UserRegister):
         {"uuid": userID},
         {"$push": {"groups": groupObjID}}
     )
+
+    API.LOGGER.value.info(f"用户 {userID} 已注册")
 
     return {"uuid": userID}
 
@@ -136,8 +141,6 @@ async def getWSToken(device: str = Query(...),
         {"$set": {"lastSeen": deviceInfo}}
     )
 
-    # TODO: 同时在线设备已满强制下线
-
     token = uuid4().hex
     info = WebsocketTokenSchema(
         time=time,
@@ -153,8 +156,29 @@ async def getWSToken(device: str = Query(...),
     }
 
 
+@userRouter.get('/limits')
+@rateLimit(30, 30)
+async def getLimits(request: Request):
+    def convert(limit, unit):
+        if isinstance(limit, dict):
+            return f"最低:{limit['MIN']}{unit} 最高:{limit['MAX']}{unit}"
+        return f"{limit}{unit}"
+
+    info = {
+        "文本字数": convert(Limits.GROUP_TEXT_LENGTH_RANGE.value, ""),
+        "图片大小": convert(Limits.GROUP_IMAGE_SIZE_RANGE.value, "KB"),
+        "语音时长": convert(Limits.GROUP_AUDIO_LENGTH_RANGE.value, "秒"),
+        "文件大小": convert(Limits.GROUP_FILE_SIZE_RANGE.value, "KB"),
+        "群验证/好友申请有效期": convert(Limits.REQUEST_EXPIRE_MINUTES.value, "分钟"),
+        "群消息/文件过期时间": convert(Limits.REQUEST_EXPIRE_MINUTES.value, "分钟"),
+    }
+
+    return info
+
+
 @userRouter.get('/profile/me')
-def profile(userInfo: UserSchema = Depends(getSelfInfo)):
+@rateLimit(30, 30)
+async def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     获取自己的信息 需要登录
     不包括avatar和password  avatar通过GET profile/{uuid}获取
@@ -175,7 +199,8 @@ def profile(userInfo: UserSchema = Depends(getSelfInfo)):
 
 
 @userRouter.get('/{uuid}/profile')
-def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
+@rateLimit(30, 30)
+async def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
     '''
     获取用户信息
     :param uuid: 用户uuid
@@ -190,7 +215,8 @@ def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
 
 
 @userRouter.get('/{uuid}/profile/current')
-def getUserCurrentInfo(userInfo: UserSchema = Depends(getUserInfo)):
+@rateLimit(30, 30)
+async def getUserCurrentInfo(userInfo: UserSchema = Depends(getUserInfo)):
     '''
     获取用户当前信息
     :param uuid: 用户uuid
@@ -205,8 +231,9 @@ def getUserCurrentInfo(userInfo: UserSchema = Depends(getUserInfo)):
 
 
 @userRouter.patch('/{uuid}/profile/avatar')
-def modifyUserAvatar(newAvatar: Avatar,
-                     userInfo: UserSchema = Depends(getSelfInfo)):
+@rateLimit(10, 120)
+async def modifyUserAvatar(newAvatar: Avatar,
+                           userInfo: UserSchema = Depends(getSelfInfo)):
     ACCOUNT.update(
         {"uuid": userInfo.uuid},
         {"$set": {"avatar": newAvatar.avatar, "lastUpdate": timestamp()}}
@@ -216,8 +243,9 @@ def modifyUserAvatar(newAvatar: Avatar,
 
 
 @userRouter.patch('/{uuid}/profile/username')
-def modifyUsername(newName: Username,
-                   userInfo: UserSchema = Depends(getSelfInfo)):
+@rateLimit(10, 30)
+async def modifyUsername(newName: Username,
+                         userInfo: UserSchema = Depends(getSelfInfo)):
     ACCOUNT.update(
         {"uuid": userInfo.uuid},
         {"$set": {"username": newName.name, "lastUpdate": timestamp()}}
@@ -227,8 +255,9 @@ def modifyUsername(newName: Username,
 
 
 @userRouter.patch('/{uuid}/profile/bio')
-def modifyUserBio(bio: Bio,
-                  userInfo: UserSchema = Depends(getSelfInfo)):
+@rateLimit(10, 30)
+async def modifyUserBio(bio: Bio,
+                        userInfo: UserSchema = Depends(getSelfInfo)):
     ACCOUNT.update(
         {"uuid": userInfo.uuid},
         {"$set": {"bio": bio.bio}}
@@ -237,7 +266,21 @@ def modifyUserBio(bio: Bio,
     return {"detail": "ok"}
 
 
+@userRouter.patch('/{uuid}/profile/password')
+@rateLimit(10, 30)
+async def modifyUserPassword(newPassword: Password,
+                             userInfo: UserSchema = Depends(getSelfInfo)):
+    hashed = hashPassword(newPassword.password)
+    ACCOUNT.update(
+        {"uuid": userInfo.uuid},
+        {"$set": {"password": hashed}}
+    )
+
+    return {"detail": "ok"}
+
+
 @userRouter.post('/{uuid}/verify/request')
+@rateLimit(10, 30)
 async def friendRequest(reason: Reason,
                         info: Info = Depends(
                             lambda userInfo=Depends(getSelfInfo), uuid=Path(...): CheckRequest(
@@ -309,6 +352,7 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
 
 
 @userRouter.post('/{uuid}/verify/request/{time}')
+@rateLimit(30, 30)
 async def requestAccept(time: str = Path(...),
                         info: Info = Depends(
                             lambda userInfo=Depends(getSelfInfo), uuid=Path(...), time=Path(...): CheckRequest(
@@ -408,6 +452,7 @@ async def requestAccept(time: str = Path(...),
 
 
 @userRouter.delete('/{uuid}/verify/request/{time}')
+@rateLimit(30, 30)
 async def requestReject(time: str = Path(...),
                         info: Info = Depends(
                             lambda userInfo=Depends(getSelfInfo), uuid=Path(...), time=Path(...): CheckRequest(

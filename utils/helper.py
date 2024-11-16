@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 
 from jose import jwt
 
-from public.const import Auth
+from public.const import API, Auth, Database, Limits
+from utils.crud import FS
 
 
 def hashPassword(password: str) -> str:
@@ -28,3 +29,31 @@ def createAccessToken(uuid, isBot) -> str:
 
     token = jwt.encode(encode, Auth.SECRET_KEY.value, algorithm=Auth.ALGORITHM.value)
     return token
+
+
+def cleaner():
+    client = Database.CLIENT.value
+
+    def execute(DBName, limit):
+        DB = client[DBName.value]
+        threshold = str(int(timestamp()) - limit.value * 60 * 1000)
+        for name in DB.list_collection_names():
+            collection = DB[name]
+            result = collection.delete_many({"time": {"$lt": threshold}})
+            if result.deleted_count:
+                API.LOGGER.value.info(f"定时清理: 数据库 {DBName}: 集合{name}: 删除了 {result.deleted_count} 条文档")
+
+    # 清理过期信息，群验证，好友请求，通知
+    execute(Database.STORAGE_DB, Limits.MESSAGE_EXPIRE_MINUTES)
+    execute(Database.REQUEST_DB, Limits.REQUEST_EXPIRE_MINUTES)
+    execute(Database.NotificationDB, Limits.NOTIFICATION_EXPIRE_MINUTES)
+
+    # 清理过期文件
+    delCount = 0
+    threshold = datetime.utcnow() - timedelta(minutes=Limits.MESSAGE_EXPIRE_MINUTES.value)
+    files = client[Database.FILE_DB.value]["fs.files"].find({"uploadDate": {"$lt": threshold}})
+    for file in files:
+        FS.deleteByID(file["_id"])
+        delCount += 1
+    if delCount:
+        API.LOGGER.value.info(f"定时清理: 删除了 {delCount} 个文件")

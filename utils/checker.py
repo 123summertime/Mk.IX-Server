@@ -11,9 +11,10 @@ def textMessageChecker(userID: str,
                        groupID: str,
                        message: GetMessageSchema) -> CheckerState:
     limit = Limits.GROUP_TEXT_LENGTH_RANGE.value
+    MAX = limit['MAX']
     if message.payload.meta.get("encrypt", False):
-        limit['MAX'] += 32  # 加密后字符串稍长
-    if not limit['MIN'] <= len(message.payload.content) <= limit['MAX']:
+        MAX += 32  # 加密后字符串可能稍长
+    if not limit['MIN'] <= len(message.payload.content) <= MAX:
         return CheckerState.LIMIT_EXCEED
     return CheckerState.OK
 

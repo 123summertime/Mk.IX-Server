@@ -77,7 +77,10 @@ class GridFS_CRUD():
             {'hash': hashcode}
         )
         if file:
-            self._fs.delete(file['_id'])
+            self.deleteByID(file['_id'])
+
+    def deleteByID(self, ID):
+        self._fs.delete(ID)
 
     def query(self, hashcode) -> FileStorageSchema | None:
         file = self._db.fs.files.find_one(

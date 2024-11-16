@@ -1,7 +1,10 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from router import user, ws, group
 from fastapi.middleware.cors import CORSMiddleware
+from utils.helper import cleaner
+from middleware.middleware import log500Error
+from apscheduler.schedulers.background import BackgroundScheduler
 
 
 # uvicorn app:app --reload
@@ -18,3 +21,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.middleware("http")(log500Error)
+
+
+# 定时清理过期文件/消息/请求
+scheduler = BackgroundScheduler()
+scheduler.add_job(cleaner, 'cron', hour=3, minute=0)
+scheduler.start()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    scheduler.shutdown()

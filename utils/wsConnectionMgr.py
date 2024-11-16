@@ -1,12 +1,13 @@
 from typing import List, Any
 from collections import defaultdict
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 from public.const import Database, Limits
 from public.stateCode import SystemMessageType, CheckerState
 from schema.message import GetMessageSchema, SendMessageSchema, SysMessageSchema
 from schema.storage import StorageSchema, NotificationMsgSchema
+from utils.rateLimit import rateLimit
 from utils.checker import beforeSendingCheck
 from utils.crud import DB_CRUD, ACCOUNT, GROUP, CrudHelpers
 from utils.helper import timestamp
@@ -71,15 +72,35 @@ class WebsocketConnectionManager:
         self._groups[groupID].addUser(userID)
         self._userGroups[userID].add(groupID)
 
+    async def popDevice(self,
+                        userID: str):
+        ''' 该用户到达最大在线数量，随机pop一台设备 '''
+        if len(self._users[userID]) >= Limits.MAX_ONLINE_DEVICE.value:
+            device = list(self._users[userID])[0]
+            sysMsg = SysMessageSchema(
+                time=timestamp(),
+                type=SystemMessageType.LOGOUT.value,
+                payload=f"已达到最大同时在线设备数({Limits.MAX_ONLINE_DEVICE.value}台)，请尝试重新登录"
+            ).model_dump()
+            await self._device[device].send_json(sysMsg)
+
+            try:
+                ws = self._device[device]
+                await ws.close()
+            except Exception as e:
+                pass
+
     async def connect(self,
                       userID: str,
                       deviceID: str,
                       websocket: WebSocket,
                       subprotocol: str):
-        await websocket.accept(subprotocol=subprotocol)
 
+        await self.popDevice(userID)
         self._users[userID].add(deviceID)
         self._device[deviceID] = websocket
+
+        await websocket.accept(subprotocol=subprotocol)
 
         userInfo = ACCOUNT.query(
             {"uuid": userID},
@@ -225,6 +246,7 @@ class WebsocketConnectionManager:
             ws = self._device[device]
             await ws.send_json(message.model_dump())
 
+    @rateLimit(Limits.MESSAGE_RATE.value, 1)
     async def sendingGroupMessage(self,
                                   userID: str,
                                   groupID: str,
@@ -241,7 +263,7 @@ class WebsocketConnectionManager:
                 type=SystemMessageType.FAIL.value,
                 payload=result.value
             )
-            await WCM.sendingSystemMessage(userID, sysMsg)
+            await self.sendingSystemMessage(userID, sysMsg)
             return
 
         userInfo = ACCOUNT.query(
