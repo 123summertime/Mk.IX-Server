@@ -57,3 +57,10 @@ def cleaner():
         delCount += 1
     if delCount:
         API.LOGGER.value.info(f"定时清理: 删除了 {delCount} 个文件")
+
+
+def checkerServerConfig():
+    if Auth.SALT.value == "jSJ1oGX6siEa50Nmq6xlYvD0IfnUlKrj":
+        API.LOGGER.value.warn("SALT使用默认值，可能会带来安全性问题。请修改config.yaml中的Auth.SALT")
+    if Auth.SECRET_KEY.value == "hw4jf6uz8o4na1rc3pf9yxr8fn3gft3m":
+        API.LOGGER.value.warn("SECRET_KEY使用默认值，可能会带来安全性问题。请修改config.yaml中的Auth.SECRET_KEY")

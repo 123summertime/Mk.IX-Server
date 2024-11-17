@@ -2,7 +2,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from router import user, ws, group
 from fastapi.middleware.cors import CORSMiddleware
-from utils.helper import cleaner
+from utils.helper import cleaner, checkerServerConfig
 from middleware.middleware import log500Error
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -17,9 +17,9 @@ app.include_router(group.groupRouter)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["OPTIONS", "GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.middleware("http")(log500Error)
@@ -31,6 +31,11 @@ scheduler.add_job(cleaner, 'cron', hour=3, minute=0)
 scheduler.start()
 
 
+@app.on_event("startup")
+def startup():
+    checkerServerConfig()
+
+
 @app.on_event("shutdown")
-def shutdown_event():
+def shutdown():
     scheduler.shutdown()
