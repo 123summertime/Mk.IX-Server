@@ -44,7 +44,7 @@ async def websocketConnection(websocket: WebSocket, Sec_Websocket_Protocol=Heade
                     getMessage.payload.meta = dict()
                 await WCM.sendingGroupMessage(info.uuid, message["group"], getMessage)
             except HTTPException:
-                print("Rate Limit", info.uuid)
+                API.LOGGER.value.info(f"{info.uuid} 触发了速率限制")
                 sysMsg = SysMessageSchema(
                     time=timestamp(),
                     type=SystemMessageType.FAIL.value,

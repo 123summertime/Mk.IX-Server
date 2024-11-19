@@ -24,7 +24,7 @@ def rateLimit(limit: int, window: int):
             elif 'userInfo' in kwargs:
                 uuid = kwargs['userInfo'].uuid       # 用户uuid, 在user中使用
             else:
-                uuid = args[1]                       # 用户uuid,  在ws中使用
+                uuid = args[1]                       # 用户uuid, 在ws中使用
 
             currentTime = int(datetime.now().timestamp())
             queue = routerInvoke[key][uuid]

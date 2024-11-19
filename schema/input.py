@@ -75,6 +75,14 @@ class GroupName(BaseModel):
         return InputValidate.validateStringLength(s, Limits.GROUP_NAME_LENGTH_RANGE, "群名")
 
 
+class GroupAnnouncement(BaseModel):
+    announcement: str
+
+    @validator('announcement')
+    def validateAnnouncement(cls, s):
+        return InputValidate.validateStringLength(s, Limits.GROUP_ANN_LENGTH_RANGE, "群公告")
+
+
 class Avatar(BaseModel):
     avatar: str
 

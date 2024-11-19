@@ -33,6 +33,9 @@ Limits:
   GROUP_QA_LENGTH_RANGE:       # 入群问题长度限制 默认[0, 32]
     MIN: 0
     MAX: 32
+  GROUP_ANN_LENGTH_RANGE:      # 群公告长度限制 默认[0, 512]
+    MIN: 0
+    MAX: 512
   GROUP_AUDIO_LENGTH_RANGE:    # 语音消息长度限制 默认[1, 50] 单位: 秒
     MIN: 1
     MAX: 50

@@ -66,6 +66,7 @@ async def register(request: Request,
         {"uuid": userID},
         {"$push": {"groups": groupObjID}}
     )
+    Database.CLIENT.value[Database.STORAGE_DB.value][groupID].create_index([('time', 1)], unique=True)
 
     API.LOGGER.value.info(f"用户 {userID} 已注册")
 
@@ -181,7 +182,7 @@ async def getLimits(request: Request):
 async def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     获取自己的信息 需要登录
-    不包括avatar和password  avatar通过GET profile/{uuid}获取
+    不包括avatar和password  avatar通过GET {uuid}/profile获取
     '''
     for index, groupObjID in enumerate(userInfo.groups):
         groupInfo = GROUP.query(
@@ -287,7 +288,7 @@ async def friendRequest(reason: Reason,
                                 userInfo=userInfo,
                                 isGroupRequest=False,
                                 uuid=uuid,
-                                checkers=[RequestValidate.notExist],
+                                checkers=[RequestValidate.notExist, RequestValidate.notSelf],
                             )()
                         )):
     '''
@@ -396,6 +397,7 @@ async def requestAccept(time: str = Path(...),
         {"time": time},
         {"$set": {"state": currentState}}
     )
+    Database.CLIENT.value[Database.STORAGE_DB.value][groupID].create_index([('time', 1)], unique=True)
 
     WCM.userJoinedGroup(requestInfo.senderID, groupID)
     WCM.userJoinedGroup(requestInfo.target, groupID)

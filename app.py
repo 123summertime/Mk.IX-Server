@@ -2,7 +2,8 @@ import uvicorn
 from fastapi import FastAPI, Request
 from router import user, ws, group
 from fastapi.middleware.cors import CORSMiddleware
-from utils.helper import cleaner, checkerServerConfig
+from public.const import API
+from utils.helper import cleaner, checkerServerConfig, createIndex
 from middleware.middleware import log500Error
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -34,8 +35,11 @@ scheduler.start()
 @app.on_event("startup")
 def startup():
     checkerServerConfig()
+    createIndex()
+    API.LOGGER.value.info("服务器已启动")
 
 
 @app.on_event("shutdown")
 def shutdown():
     scheduler.shutdown()
+    API.LOGGER.value.info("服务器已关闭")

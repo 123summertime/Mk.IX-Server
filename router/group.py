@@ -8,11 +8,11 @@ from depends.checkPermission import PermissionValidate, TargetValidate, CheckPer
     CheckRequest, outputFileValidate
 from depends.getInfo import getGroupInfoWithAvatar, getSelfInfo
 from depends.inputValidate import InputValidate
-from public.const import API, Default, Limits
+from public.const import API, Default, Limits, Database
 from public.stateCode import RequestState, SystemMessageType, NotificationMsgSubtype
 from schema.file import FileInput
 from schema.group import GroupSchema, Info
-from schema.input import GroupA, GroupQA, GroupRegister, Avatar, Reason, GroupName
+from schema.input import GroupA, GroupQA, GroupRegister, Avatar, Reason, GroupName, GroupAnnouncement
 from schema.message import GetMessageSchema, SysMessageSchema, MessagePayload, BroadcastMessageSchema
 from schema.storage import RequestMsgSchema, FileStorageSchema, NotificationMsgSchema
 from schema.user import UserSchema
@@ -32,12 +32,13 @@ async def makeGroup(groupRegister: GroupRegister,
     创建群
     '''
     name, Q, A = groupRegister.name, groupRegister.Q, groupRegister.A
+    time = timestamp()
     groupID = str(uuid4().int)[::4]
     newGroup = GroupSchema(
         group=groupID,
         name=name,
         avatar=Default.DEFAULT_AVATAR.value,
-        lastUpdate=timestamp(),
+        lastUpdate=time,
         owner=userInfo.id,
         question={Q: A},
         admin=[],
@@ -50,8 +51,21 @@ async def makeGroup(groupRegister: GroupRegister,
         {"uuid": userInfo.uuid},
         {"$push": {"groups": groupObjID}}
     )
+    Database.CLIENT.value[Database.STORAGE_DB.value][groupID].create_index([('time', 1)], unique=True)
 
     WCM.userJoinedGroup(userInfo.uuid, groupID)
+
+    # 发送创建群的广播消息
+    buildMessage = BroadcastMessageSchema(
+        time=time,
+        type=SystemMessageType.SYSTEM.value,
+        group=groupID,
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            content=f"'{name}'群已创建",
+        )
+    )
+    await WCM.sendingGroupMessage(userInfo.uuid, groupID, buildMessage)
 
     return {"groupID": groupID}
 
@@ -114,6 +128,34 @@ async def getMembersInfo(info: Info = Depends(CheckPermission(PermissionValidate
     membersInfo = [CrudHelpers.userObjectIDtoInfo(i).model_dump() for i in groupInfo.user]
 
     return {"users": membersInfo}
+
+
+@groupRouter.get('/{group}/announcement')
+@rateLimit(10, 30)
+async def getAnnouncement(info: Info = Depends(CheckPermission(PermissionValidate.member))):
+    '''
+    获取群公告
+    '''
+    groupInfo = info.groupInfo
+
+    return {"announcement": groupInfo.announcement}
+
+
+@groupRouter.patch('/{group}/announcement')
+@rateLimit(10, 30)
+async def modifyAnnouncement(ann: GroupAnnouncement,
+                             info: Info = Depends(CheckPermission(PermissionValidate.admin))):
+    '''
+    修改群公告
+    '''
+    ann, groupInfo = ann.announcement, info.groupInfo
+
+    GROUP.update(
+        {"group": groupInfo.group},
+        {"$set": {"announcement": ann}},
+    )
+
+    return {"detail": "ok"}
 
 
 @groupRouter.get('/{group}/members/admin')

@@ -138,7 +138,7 @@ def getRequest(userInfo: UserSchema,
     query = {"time": time} if time else {"senderID": userInfo.uuid, "target": target}
     res = collection.queryMany(query, {"_id": 0})
     if time:
-        return res[0]
+        return res[0] if res else None
     for req in res:
         if req.state == RequestState.PENDING.value:
             return req

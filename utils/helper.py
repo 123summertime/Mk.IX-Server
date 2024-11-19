@@ -64,3 +64,12 @@ def checkerServerConfig():
         API.LOGGER.value.warn("SALT使用默认值，可能会带来安全性问题。请修改config.yaml中的Auth.SALT")
     if Auth.SECRET_KEY.value == "hw4jf6uz8o4na1rc3pf9yxr8fn3gft3m":
         API.LOGGER.value.warn("SECRET_KEY使用默认值，可能会带来安全性问题。请修改config.yaml中的Auth.SECRET_KEY")
+
+
+def createIndex():
+    client = Database.CLIENT.value
+    client[Database.INFO_DB.value][Database.ACCOUNT_COLLECTION.value].create_index([('uuid', 1)], unique=True)
+    client[Database.INFO_DB.value][Database.GROUP_COLLECTION.value].create_index([('group', 1)], unique=True)
+    client[Database.TOKEN_DB.value][Database.WEBSOCKET_TOKEN_COLLECTION.value].create_index([('time', 1)], unique=True)
+    client[Database.REQUEST_DB.value][Database.FRIEND_REQUEST_COLLECTION.value].create_index([('time', 1)], unique=True)
+    client[Database.REQUEST_DB.value][Database.GROUP_REQUEST_COLLECTION.value].create_index([('time', 1)], unique=True)

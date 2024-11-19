@@ -143,10 +143,7 @@ class WebsocketConnectionManager:
                 subType=msg.subType,
                 payload=msg.payload,
             )
-            try:
-                await websocket.send_json(m.model_dump())
-            except Exception as e:
-                print("Exception on sending notification message ->", e)
+            await websocket.send_json(m.model_dump())
 
     async def _postOfflineGroupMessages(self,
                                         groupIDs: list,
@@ -174,10 +171,7 @@ class WebsocketConnectionManager:
                     senderKey=userInfo.lastUpdate,
                     payload=msg.payload,
                 )
-                try:
-                    await websocket.send_json(m.model_dump())
-                except Exception as e:
-                    print("Exception on sending offline message ->", e)
+                await websocket.send_json(m.model_dump())
 
     async def disconnectUser(self,
                              userID: str,

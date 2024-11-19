@@ -153,6 +153,14 @@ class RequestValidate:
             raise HTTPException(status_code=403, detail="申请中，等待审核")
         return True
 
+    @staticmethod
+    def notSelf(userInfo: UserSchema,
+                targetInfo: UserSchema,
+                **kwargs) -> bool:
+        if userInfo.uuid == targetInfo.uuid:
+            raise HTTPException(status_code=403, detail="不允许向自己发送好友请求")
+        return True
+
 
 class outputFileValidate:
     @staticmethod

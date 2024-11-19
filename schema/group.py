@@ -16,6 +16,7 @@ class GroupSchema(BaseModel):
     admin: List[Any] = []            # 元素:管理员objectID
     user: List[Any] = []             # 元素:用户objectID
     question: Dict[str, str] = {}    # {Q: A}
+    announcement: str = ""           # 群公告
 
 
 class Info(BaseModel):
