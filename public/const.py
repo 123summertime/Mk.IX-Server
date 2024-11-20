@@ -34,7 +34,8 @@ class API(Enum):
 
 
 class Database(Enum):
-    CLIENT = pymongo.MongoClient(database['HOST'], database['PORT'], maxPoolSize=database['MAX_POOL_SIZE'])
+    # CLIENT = pymongo.MongoClient(database['HOST'], database['PORT'], maxPoolSize=database['MAX_POOL_SIZE'])
+    CLIENT = pymongo.MongoClient("mongodb://mongodb:27017/")
 
     # 用户数据 群数据
     INFO_DB = "UserInfo"
