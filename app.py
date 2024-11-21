@@ -4,7 +4,6 @@ from router import user, ws, group
 from fastapi.middleware.cors import CORSMiddleware
 from public.const import API
 from utils.helper import cleaner, checkerServerConfig, createIndex
-from middleware.middleware import log500Error
 from apscheduler.schedulers.background import BackgroundScheduler
 
 
@@ -22,8 +21,6 @@ app.add_middleware(
     allow_methods=["OPTIONS", "GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
-
-app.middleware("http")(log500Error)
 
 
 # 定时清理过期文件/消息/请求

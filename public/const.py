@@ -1,10 +1,13 @@
 from enum import Enum
 import logging
-from logging.handlers import TimedRotatingFileHandler
 
 import pymongo
 import yaml
 from fastapi.security import OAuth2PasswordBearer
+
+with open('logging.yaml', 'r') as F:
+    config = yaml.safe_load(F.read())
+    logging.config.dictConfig(config)
 
 with open('config.yaml', 'r', encoding='utf-8') as F:
     config = yaml.safe_load(F)
@@ -14,28 +17,14 @@ auth = config['Auth']
 default = config['Default']
 limits = config['Limits']
 
-log_handler = TimedRotatingFileHandler(
-    filename="Log.log",
-    when="midnight",
-    interval=1,
-    backupCount=7,
-    encoding="utf-8"
-)
-log_handler.setFormatter(logging.Formatter("%(levelname)s - %(asctime)s - %(message)s"))  # noqa
-logger = logging.getLogger("logger")
-logger.setLevel(logging.INFO)
-logger.addHandler(log_handler)
-logger.addHandler(logging.StreamHandler())
-
 
 class API(Enum):
     VERSION = "v1"
-    LOGGER = logger
+    LOGGER = logging.getLogger('logger')
 
 
 class Database(Enum):
-    # CLIENT = pymongo.MongoClient(database['HOST'], database['PORT'], maxPoolSize=database['MAX_POOL_SIZE'])
-    CLIENT = pymongo.MongoClient("mongodb://mongodb:27017/")
+    CLIENT = pymongo.MongoClient(database['HOST'], database['PORT'], maxPoolSize=database['MAX_POOL_SIZE'])
 
     # 用户数据 群数据
     INFO_DB = "UserInfo"

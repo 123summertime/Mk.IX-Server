@@ -1,3 +1,4 @@
+import traceback
 import io
 from datetime import datetime, timezone
 
@@ -90,7 +91,7 @@ def audioFileMessageModifier(userID: str,
 
     # 将语音分为chunkCount段，获取每段的音量大小，放入meta字段中
     try:
-        audio = AudioSegment.from_file(file.file.read())
+        audio = AudioSegment.from_file(io.BytesIO(file.file.read()))
         chunkCount = min(50, (len(audio) // 1000) + 2)
         chunkLength = len(audio) // chunkCount
         audioChunks = [audio[i: i + chunkLength].rms for i in range(0, len(audio), chunkLength)]
@@ -102,6 +103,7 @@ def audioFileMessageModifier(userID: str,
         }
         return CheckerState.OK
     except Exception as e:
+        print(e)
         return CheckerState.UNKNOWN
 
 

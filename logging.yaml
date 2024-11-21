@@ -1,0 +1,33 @@
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  simple:
+    format: '%(levelname)s - %(asctime)s - %(message)s'
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: simple
+    stream: ext://sys.stdout
+
+  file:
+    class: logging.handlers.TimedRotatingFileHandler
+    level: INFO
+    formatter: simple
+    filename: Log.log
+    when: midnight
+    interval: 1
+    backupCount: 7
+    encoding: utf-8
+
+loggers:
+  logger:
+    level: INFO
+    handlers: [console, file]
+    propagate: no
+
+root:
+  level: INFO
+  handlers: [console, file]

@@ -25,7 +25,7 @@ async def websocketConnection(websocket: WebSocket, Sec_Websocket_Protocol=Heade
     WS_TOKEN.delete({"token": token})
     await WCM.connect(info.uuid, info.device, websocket, token)
 
-    API.LOGGER.value.info(f"{info.uuid} 在 {info.device}设备 上线")
+    API.LOGGER.value.info(f"{info.uuid} 在 {info.device} 设备 上线")
 
     try:
         while True:

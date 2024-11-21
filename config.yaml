@@ -7,7 +7,7 @@ Auth:
   SECRET_KEY: hw4jf6uz8o4na1rc3pf9yxr8fn3gft3m  # JWT密钥
   SALT: jSJ1oGX6siEa50Nmq6xlYvD0IfnUlKrj        # 密码加盐
   USER_ACCESS_TOKEN_EXPIRE_MINUTES: 2160        # 用户Token过期时间 默认2160 单位: 分钟
-  BOT_ACCESS_TOKEN_EXPIRE_MINUTES: 525600       # 机器人Token过期时间 默认525600 单位: 分钟
+  BOT_ACCESS_TOKEN_EXPIRE_MINUTES: 2628000      # 机器人Token过期时间 默认2628000 单位: 分钟
 
 Default:
   # 用户/群的默认头像 base64格式
