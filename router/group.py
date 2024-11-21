@@ -159,6 +159,7 @@ async def modifyAnnouncement(ann: GroupAnnouncement,
 
 
 @groupRouter.get('/{group}/members/admin')
+@rateLimit(10, 30)
 async def getAdminInfo(info: Info = Depends(CheckPermission(PermissionValidate.notLimit))):
     '''
     获取群主+管理员信息 需要登录
@@ -331,6 +332,7 @@ async def getInfo(groupInfo: GroupSchema = Depends(getGroupInfoWithAvatar)):
 
 
 @groupRouter.patch('/{group}/info/name')
+@rateLimit(10, 30)
 async def modifyGroupName(newName: GroupName,
                           info: Info = Depends(CheckPermission(PermissionValidate.admin))):
     '''
@@ -358,7 +360,7 @@ async def modifyGroupName(newName: GroupName,
 
 
 @groupRouter.patch('/{group}/info/avatar')
-@rateLimit(10, 120)
+@rateLimit(5, 30)
 async def modifyGroupAvatar(newAvatar: Avatar,
                             info: Info = Depends(CheckPermission(PermissionValidate.admin))):
     '''
@@ -704,7 +706,7 @@ async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidat
 
 
 @groupRouter.get('/{group}/download/{hashcode}')
-@rateLimit(30, 30)
+@rateLimit(10, 30)
 async def downloadFile(info: Info = Depends(CheckPermission(PermissionValidate.member)),
                        file: FileStorageSchema = Depends(outputFileValidate.exists)):
     READ_SIZE = 1024 * 1024  # 1MB

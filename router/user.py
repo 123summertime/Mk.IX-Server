@@ -111,6 +111,7 @@ def check(newToken=Depends(checker)):
 
 
 @userRouter.get('/wsToken')
+@rateLimit(30, 30)
 async def getWSToken(device: str = Query(...),
                      userInfo: UserSchema = Depends(getSelfInfo)):
     '''
@@ -232,7 +233,7 @@ async def getUserCurrentInfo(userInfo: UserSchema = Depends(getUserInfo)):
 
 
 @userRouter.patch('/{uuid}/profile/avatar')
-@rateLimit(10, 120)
+@rateLimit(5, 30)
 async def modifyUserAvatar(newAvatar: Avatar,
                            userInfo: UserSchema = Depends(getSelfInfo)):
     ACCOUNT.update(
