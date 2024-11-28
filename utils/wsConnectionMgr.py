@@ -20,6 +20,9 @@ class GroupItem:
         self._collection = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
         self._userInGroup = set()
 
+    def __repr__(self):
+        return f"In Group: {self.groupID} -> {str(self._userInGroup)}"
+
     def addUser(self, userID):
         self._userInGroup.add(userID)
 
@@ -55,7 +58,7 @@ class WebsocketConnectionManager:
         return userID in self._users
 
     def __repr__(self):
-        return f"User: {self._users}\n Device: {self._device}\n Group: {self._groups}\n UserGroup: {self._userGroups}"
+        return f"User: {self._users}\n Device: {self._device.keys()}\n Group: {self._groups}\n UserGroup: {self._userGroups}"
 
     def userJoinedGroup(self,
                         userID: str,
@@ -94,13 +97,17 @@ class WebsocketConnectionManager:
                       userID: str,
                       deviceID: str,
                       websocket: WebSocket,
-                      subprotocol: str):
+                      Sec_Websocket_Protocol: str,
+                      Authorization: str):
 
         await self.popDevice(userID)
         self._users[userID].add(deviceID)
         self._device[deviceID] = websocket
 
-        await websocket.accept(subprotocol=subprotocol)
+        if Authorization:
+            await websocket.accept()
+        else:
+            await websocket.accept(subprotocol=Sec_Websocket_Protocol)
 
         userInfo = ACCOUNT.query(
             {"uuid": userID},

@@ -179,7 +179,6 @@ async def getLimits(request: Request):
 
 
 @userRouter.get('/profile/me')
-@rateLimit(30, 30)
 async def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     获取自己的信息 需要登录

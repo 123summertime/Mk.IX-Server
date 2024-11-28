@@ -14,8 +14,10 @@ wsRouter = APIRouter(prefix="/websocket", tags=['Websockets'])
 
 
 @wsRouter.websocket('/connect')
-async def websocketConnection(websocket: WebSocket, Sec_Websocket_Protocol=Header(None)):
-    token = Sec_Websocket_Protocol
+async def websocketConnection(websocket: WebSocket,
+                              Sec_Websocket_Protocol=Header(None),
+                              Authorization=Header(None)):
+    token = Sec_Websocket_Protocol or Authorization  # 任选其一传递token
     info = WS_TOKEN.query({"token": token})
     time = timestamp()
     limit = Auth.WEBSOCKET_TOKEN_EXPIRE_SECONDS.value
@@ -23,7 +25,7 @@ async def websocketConnection(websocket: WebSocket, Sec_Websocket_Protocol=Heade
         raise WebSocketException(code=4001, reason="无效的token")
 
     WS_TOKEN.delete({"token": token})
-    await WCM.connect(info.uuid, info.device, websocket, token)
+    await WCM.connect(info.uuid, info.device, websocket, Sec_Websocket_Protocol, Authorization)
 
     API.LOGGER.value.info(f"{info.uuid} 在 {info.device} 设备 上线")
 
@@ -51,7 +53,9 @@ async def websocketConnection(websocket: WebSocket, Sec_Websocket_Protocol=Heade
                     payload="发送速度过快，请稍后再试",
                 )
                 await WCM.sendingSystemMessage(info.uuid, sysMsg)
-    except WebSocketDisconnect:
+    except WebSocketDisconnect as e:
+        error = "".join(traceback.format_exception(type(e), e, e.__traceback__))
+        API.LOGGER.value.error(f"wsConnectionMgr出现错误: {error}")
         await WCM.disconnectUser(info.uuid, info.device)
         API.LOGGER.value.info(f"{info.uuid} 在 {info.device} 设备 下线")
     except Exception as e:
