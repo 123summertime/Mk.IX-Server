@@ -5,10 +5,6 @@ import pymongo
 import yaml
 from fastapi.security import OAuth2PasswordBearer
 
-with open('logging.yaml', 'r') as F:
-    config = yaml.safe_load(F.read())
-    logging.config.dictConfig(config)
-
 with open('config.yaml', 'r', encoding='utf-8') as F:
     config = yaml.safe_load(F)
 

@@ -4,8 +4,8 @@ import io
 from fastapi import HTTPException, UploadFile, File, Form
 from pydub import AudioSegment
 
-from public.const import Limits
-from schema.file import FileInput
+from public import Limits
+from .file import FileInput
 
 
 # 验证用户的输入是否符合限制

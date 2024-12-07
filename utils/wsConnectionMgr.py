@@ -1,17 +1,15 @@
-from typing import List, Any
+import asyncio
 from collections import defaultdict
 
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
-from public.const import Database, Limits
-from public.stateCode import SystemMessageType, CheckerState
-from schema.message import GetMessageSchema, SendMessageSchema, SysMessageSchema
-from schema.storage import StorageSchema, NotificationMsgSchema
-from utils.rateLimit import rateLimit
-from utils.checker import beforeSendingCheck
-from utils.crud import DB_CRUD, ACCOUNT, GROUP, CrudHelpers
-from utils.helper import timestamp
-from utils.modifier import beforeSendingModify
+from public import Database, Limits, SystemMessageType
+from schema import GetMessageSchema, SendMessageSchema, SysMessageSchema, StorageSchema, NotificationMsgSchema
+from .rateLimit import rateLimit
+from .checker import beforeSendingCheck
+from .modifier import beforeSendingModify
+from .crud import DB_CRUD, ACCOUNT, GROUP, CrudHelpers
+from .helper import timestamp
 
 
 class GroupItem:
@@ -85,12 +83,12 @@ class WebsocketConnectionManager:
                 type=SystemMessageType.LOGOUT.value,
                 payload=f"已达到最大同时在线设备数({Limits.MAX_ONLINE_DEVICE.value}台)，请尝试重新登录"
             ).model_dump()
-            await self._device[device].send_json(sysMsg)
+            asyncio.create_task(self._device[device].send_json(sysMsg))
 
             try:
                 ws = self._device[device]
                 await ws.close()
-            except Exception as e:
+            except Exception:
                 pass
 
     async def connect(self,
@@ -119,8 +117,8 @@ class WebsocketConnectionManager:
             self._userConnectToGroupItem(userID, groupID)
 
         lastSeen = userInfo.lastSeen.get(deviceID, timestamp())
-        await self._postOfflineNotificationMessages(userID, lastSeen, websocket)
-        await self._postOfflineGroupMessages(groupIDs, lastSeen, websocket)
+        asyncio.create_task(self._postOfflineNotificationMessages(userID, lastSeen, websocket))
+        asyncio.create_task(self._postOfflineGroupMessages(groupIDs, lastSeen, websocket))
 
     async def _postOfflineNotificationMessages(self,
                                                userID: str,
@@ -190,7 +188,7 @@ class WebsocketConnectionManager:
         try:
             ws = self._device[deviceID]
             await ws.close()
-        except Exception as e:
+        except Exception:
             pass
 
         # 更新device的lastSeen
@@ -238,20 +236,21 @@ class WebsocketConnectionManager:
             subType=message.subType,
             payload=message.payload.format(replace),
         )
-        await self.sendingSystemMessage(userID, sysMessage)
+        asyncio.create_task(self.sendingSystemMessage(userID, sysMessage))
 
     async def sendingSystemMessage(self,
                                    userID: str,
                                    message: SysMessageSchema):
         for device in self._users[userID]:
             ws = self._device[device]
-            await ws.send_json(message.model_dump())
+            asyncio.create_task(ws.send_json(message.model_dump()))
 
     @rateLimit(Limits.MESSAGE_RATE.value, 1)
     async def sendingGroupMessage(self,
                                   userID: str,
                                   groupID: str,
-                                  message: GetMessageSchema):
+                                  message: GetMessageSchema,
+                                  device: str | None = None):
         if userID not in self._userGroups or groupID not in self._userGroups[userID]:
             return
 
@@ -264,8 +263,16 @@ class WebsocketConnectionManager:
                 type=SystemMessageType.FAIL.value,
                 payload=result.value
             )
-            await self.sendingSystemMessage(userID, sysMsg)
+            asyncio.create_task(self.sendingSystemMessage(userID, sysMsg))
             return
+
+        if device:
+            sysMsg = SysMessageSchema(
+                time=timestamp(),
+                type=SystemMessageType.ECHO.value,
+                payload=message.time
+            )
+            asyncio.create_task(self.sendingSystemMessage(userID, sysMsg))
 
         userInfo = ACCOUNT.query(
             {"uuid": message.senderID},
@@ -285,7 +292,7 @@ class WebsocketConnectionManager:
         for userID in groupItem.onlineUserList:
             for device in self._users[userID]:
                 ws = self._device[device]
-                await ws.send_json(sendMessage)
+                asyncio.create_task(ws.send_json(sendMessage))
 
         if message.type != "revoke":
             storageMessage = StorageSchema(

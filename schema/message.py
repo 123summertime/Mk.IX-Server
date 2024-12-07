@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from public.stateCode import RequestState, NotificationMsgSubtype
+from public import RequestState
 
 
 class MessagePayload(BaseModel):

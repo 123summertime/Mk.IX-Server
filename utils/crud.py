@@ -4,13 +4,11 @@ from typing import Union, List
 
 from gridfs import GridFS
 
-from public.const import Database
-from schema.group import GroupSchema
-from schema.storage import StorageSchema, RequestMsgSchema, FileStorageSchema, WebsocketTokenSchema, NotificationMsgSchema
-from schema.user import UserSchema
+from public import Database
+from schema import GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, FileStorageSchema, WebsocketTokenSchema, NotificationMsgSchema
 
 client = Database.CLIENT.value
-_T = Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, WebsocketTokenSchema, NotificationMsgSchema, None]
+_T = Union[GroupSchema, UserSchema, StorageSchema, RequestMsgSchema, WebsocketTokenSchema, NotificationMsgSchema]
 
 
 class DB_CRUD():

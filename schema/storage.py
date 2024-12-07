@@ -2,8 +2,8 @@ from typing import Any, Dict
 
 from pydantic import BaseModel
 
-from public.stateCode import RequestState, SystemMessageType
-from schema.message import MessagePayload
+from public import RequestState, SystemMessageType
+from .message import MessagePayload
 
 
 class StorageSchema(BaseModel):

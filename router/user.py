@@ -1,23 +1,15 @@
-from datetime import timedelta
+import asyncio
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
 
-from depends.checkPermission import CheckRequest, RequestValidate
-from depends.getInfo import getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
-from public.const import API, Auth, Default, Database, Limits
-from public.stateCode import RequestState, SystemMessageType, NotificationMsgSubtype
-from schema.group import GroupSchema
-from schema.group import Info
-from schema.input import UserRegister, Reason, Avatar, Username, Bio, Password
-from schema.message import SysMessageSchema, MessagePayload, GetMessageSchema, BroadcastMessageSchema
-from schema.storage import RequestMsgSchema, WebsocketTokenSchema, NotificationMsgSchema
-from schema.user import UserSchema
-from utils.rateLimit import rateLimit
-from utils.crud import ACCOUNT, GROUP, DB_CRUD, FRIEND_REQUEST, WS_TOKEN, CrudHelpers
-from utils.helper import hashPassword, timestamp, createAccessToken
-from utils.wsConnectionMgr import WCM
+from depends import CheckRequest, RequestValidate, getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
+from public import API, Default, Database, Limits, RequestState, SystemMessageType, NotificationMsgSubtype
+from schema import GroupSchema, Info, UserRegister, Reason, Avatar, Username, Bio, Password, UserSchema, \
+    SysMessageSchema, MessagePayload, BroadcastMessageSchema, RequestMsgSchema, WebsocketTokenSchema, NotificationMsgSchema
+from utils import rateLimit, ACCOUNT, GROUP, FRIEND_REQUEST, WS_TOKEN, CrudHelpers, hashPassword, timestamp, \
+    createAccessToken, WCM
 
 userRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
 
@@ -92,7 +84,6 @@ def token(formData: OAuth2PasswordRequestForm = Depends(),
     if hashedPassword != userInfo.password:
         raise HTTPException(status_code=401, detail="密码不正确")
 
-    accessTokenExpires = timedelta(minutes=Auth.USER_ACCESS_TOKEN_EXPIRE_MINUTES.value)
     token = createAccessToken(formData.username, isBot)
 
     return {
@@ -131,7 +122,7 @@ async def getWSToken(device: str = Query(...),
             target=userInfo.uuid,
             payload=f"在新设备上登录(设备ID: {deviceID})",
         )
-        await WCM.sendingNotificationMessage(userInfo.uuid, "", msg)
+        asyncio.create_task(WCM.sendingNotificationMessage(userInfo.uuid, "", msg))
 
     # 历史登录设备已满，淘汰最久没有使用的设备
     if len(deviceInfo) == Limits.MAX_DEVICE.value:
@@ -204,7 +195,6 @@ async def profile(userInfo: UserSchema = Depends(getSelfInfo)):
 async def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
     '''
     获取用户信息
-    :param uuid: 用户uuid
     :return: 用户的username, avatar, lastUpdate
     '''
     info = {
@@ -220,7 +210,6 @@ async def userInfo(userInfo: UserSchema = Depends(getUserInfoWithAvatar)):
 async def getUserCurrentInfo(userInfo: UserSchema = Depends(getUserInfo)):
     '''
     获取用户当前信息
-    :param uuid: 用户uuid
     :return: 用户的lastSeen, bio
     '''
     info = {
@@ -308,7 +297,7 @@ async def friendRequest(reason: Reason,
         senderKey=userInfo.lastUpdate,
         payload=reason.reason,
     )
-    await WCM.sendingSystemMessage(targetInfo.uuid, sysMessage)
+    asyncio.create_task(WCM.sendingSystemMessage(targetInfo.uuid, sysMessage))
 
     requestMessage = RequestMsgSchema(
         time=time,
@@ -349,7 +338,7 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
             senderKey=senderInfo.lastUpdate,
             payload=msg.payload,
         )
-        await WCM.sendingSystemMessage(userInfo.uuid, sysMessage)
+        asyncio.create_task(WCM.sendingSystemMessage(userInfo.uuid, sysMessage))
 
 
 @userRouter.post('/{uuid}/verify/request/{time}')
@@ -411,7 +400,7 @@ async def requestAccept(time: str = Path(...),
         blank=requestInfo.target,
         payload='"{}"已通过你的好友申请',
     )
-    await WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage)
+    asyncio.create_task(WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage))
 
     # 向双方推送加好友成功的消息
     sysMessage = SysMessageSchema(
@@ -422,8 +411,8 @@ async def requestAccept(time: str = Path(...),
         state=currentState,
         payload="",
     )
-    await WCM.sendingSystemMessage(requestInfo.senderID, sysMessage)
-    await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
+    asyncio.create_task(WCM.sendingSystemMessage(requestInfo.senderID, sysMessage))
+    asyncio.create_task(WCM.sendingSystemMessage(requestInfo.target, sysMessage))
 
     # 更新申请结果
     sysMessage = SysMessageSchema(
@@ -436,19 +425,19 @@ async def requestAccept(time: str = Path(...),
         senderKey=targetInfo.lastUpdate,
         payload=requestInfo.payload
     )
-    await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
+    asyncio.create_task(WCM.sendingSystemMessage(requestInfo.target, sysMessage))
 
     # 在群里发送系统消息
     joinedMessage = BroadcastMessageSchema(
         time=currentTime,
-        type=SystemMessageType.SYSTEM.value,
+        type="system",
         group=groupID,
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content="我们已经是好友了，一起来聊天吧！",
         )
     )
-    await WCM.sendingGroupMessage(userInfo.uuid, groupID, joinedMessage)
+    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, groupID, joinedMessage))
 
     return {"detail": "ok"}
 
@@ -482,7 +471,7 @@ async def requestReject(time: str = Path(...),
         blank=requestInfo.target,
         payload='"{}"已拒绝你的好友申请',
     )
-    await WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage)
+    asyncio.create_task(WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage))
 
     # 更新申请结果
     sysMessage = SysMessageSchema(
@@ -495,6 +484,6 @@ async def requestReject(time: str = Path(...),
         senderKey=targetInfo.lastUpdate,
         payload=requestInfo.payload
     )
-    await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
+    asyncio.create_task(WCM.sendingSystemMessage(requestInfo.target, sysMessage))
 
     return {"detail": "ok"}

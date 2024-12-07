@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 
 from jose import jwt
 
-from public.const import API, Auth, Database, Limits
-from utils.crud import FS
+from public import API, Auth, Database, Limits
+from .crud import FS
 
 
 def hashPassword(password: str) -> str:

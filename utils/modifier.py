@@ -4,11 +4,9 @@ from datetime import datetime, timezone
 
 from pydub import AudioSegment
 
-from public.stateCode import CheckerState
-from public.const import Database
-from schema.message import GetMessageSchema, MessagePayload
-from schema.storage import StorageSchema
-from utils.crud import ACCOUNT, FS, DB_CRUD
+from public import CheckerState, Database
+from schema import GetMessageSchema, MessagePayload, StorageSchema
+from .crud import ACCOUNT, FS, DB_CRUD
 
 
 def textMessageModifier(userID: str,

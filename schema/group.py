@@ -2,8 +2,8 @@ from typing import List, Dict, Any
 
 from pydantic import BaseModel, Field
 
-from schema.user import UserSchema
-from schema.storage import RequestMsgSchema
+from .user import UserSchema
+from .storage import RequestMsgSchema
 
 
 class GroupSchema(BaseModel):

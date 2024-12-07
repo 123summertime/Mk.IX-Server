@@ -1,7 +1,7 @@
 from pydantic import BaseModel, validator
 
-from depends.inputValidate import InputValidate
-from public.const import Limits
+from public import Limits
+from .inputValidate import InputValidate
 
 # 处理用户简单数据类型的Model
 

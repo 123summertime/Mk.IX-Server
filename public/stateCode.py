@@ -27,7 +27,7 @@ class CheckerState(Enum):
 
 
 class SystemMessageType(Enum):
-    SYSTEM = "system"
+    ECHO = "echo"
     FAIL = "fail"
     LOGOUT = "logout"
     NOTICE = "notice"

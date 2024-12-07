@@ -42,9 +42,9 @@ Limits:
   GROUP_FILE_SIZE_RANGE:       # 群文件大小限制 默认[0, 512000] 单位: KB
     MIN: 0
     MAX: 512000
-  GROUP_TEXT_LENGTH_RANGE:     # 发送文本信息的最大长度 默认[0, 1024]
+  GROUP_TEXT_LENGTH_RANGE:     # 发送文本信息的最大长度 默认[0, 4096]
     MIN: 0
-    MAX: 1024
+    MAX: 4096
   GROUP_IMAGE_SIZE_RANGE:      # 发送图片信息的最大大小 默认[0, 1024] 单位: KB  (前端会转换为webp再发送，4K图片也只有100多KB)
     MIN: 0
     MAX: 1024

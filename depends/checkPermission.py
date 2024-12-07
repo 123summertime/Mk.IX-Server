@@ -1,15 +1,9 @@
-from functools import reduce
-
 from fastapi import HTTPException, Depends, Path
 
-from depends.getInfo import getSelfInfo, getGroupInfo, getUserInfo, getSelfRequest, getUserRequest, getRequest
-from schema.group import GroupSchema, Info
-from schema.user import UserSchema
-from schema.storage import RequestMsgSchema, FileStorageSchema
-from utils.crud import GROUP_REQUEST, FRIEND_REQUEST, FS
-from public.stateCode import RequestState
-from public.const import Limits
-from utils.helper import timestamp
+from .getInfo import getSelfInfo, getGroupInfo, getUserInfo, getRequest
+from schema import GroupSchema, UserSchema, Info, RequestMsgSchema, FileStorageSchema
+from utils import FS, timestamp
+from public import RequestState, Limits
 
 
 # member为群内所有成员，包括群主及管理员
