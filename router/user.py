@@ -1,15 +1,18 @@
 import asyncio
+from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import StreamingResponse
 
-from depends import CheckRequest, RequestValidate, getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar
+from depends import CheckRequest, RequestValidate, getSelfInfo, getUserInfo, checker, getUserInfoWithAvatar, OutputFileValidate
 from public import API, Default, Database, Limits, RequestState, SystemMessageType, NotificationMsgSubtype
 from schema import GroupSchema, Info, UserRegister, Reason, Avatar, Username, Bio, Password, UserSchema, \
-    SysMessageSchema, MessagePayload, BroadcastMessageSchema, RequestMsgSchema, WebsocketTokenSchema, NotificationMsgSchema
+    SysMessageSchema, MessagePayload, BroadcastMessageSchema, RequestMsgSchema, WebsocketTokenSchema, \
+    NotificationMsgSchema, GetMessageSchema, InputValidate, FileInput, FileStorageSchema
 from utils import rateLimit, ACCOUNT, GROUP, FRIEND_REQUEST, WS_TOKEN, CrudHelpers, hashPassword, timestamp, \
-    createAccessToken, WCM
+    createAccessToken, getVirtualGroupID, WCM, FS
 
 userRouter = APIRouter(prefix=f"/{API.VERSION.value}/user", tags=['User'])
 
@@ -35,8 +38,7 @@ async def register(request: Request,
         lastSeen={},
         lastUpdate=time,
         groups=[],
-    ).model_dump()
-    del userInfo["id"]
+    ).model_dump(exclude={"id"})
     userObjID = ACCOUNT.add(userInfo).inserted_id
 
     # 注册就送文件传输助手群
@@ -50,8 +52,7 @@ async def register(request: Request,
         question={},
         admin=[],
         user=[userObjID],
-    ).model_dump()
-    del newGroup["id"]
+    ).model_dump(exclude={"id"})
 
     groupObjID = GROUP.add(newGroup).inserted_id
     ACCOUNT.update(
@@ -179,13 +180,15 @@ async def profile(userInfo: UserSchema = Depends(getSelfInfo)):
         groupInfo = GROUP.query(
             {"_id": groupObjID},
             {"_id": 0, "group": 1, "lastUpdate": 1, "owner": 1, "admin": 1}
-        ).model_dump()
-        groupInfo["owner"] = CrudHelpers.userObjectIDtoInfo(groupInfo["owner"]).model_dump()
-        groupInfo["admin"] = [CrudHelpers.userObjectIDtoInfo(i).model_dump() for i in groupInfo["admin"]]
+        ).model_dump(exclude={"id", "name", "avatar"})
+        groupInfo["owner"] = CrudHelpers.userObjectIDtoInfo(groupInfo["owner"]).model_dump(include={"uuid", "lastUpdate"})
+        groupInfo["admin"] = [CrudHelpers.userObjectIDtoInfo(i).model_dump(include={"uuid", "lastUpdate"}) for i in groupInfo["admin"]]
         userInfo.groups[index] = groupInfo
 
-    info = userInfo.model_dump()
-    del info["id"]
+    for index, friendObjID in enumerate(userInfo.friends):
+        userInfo.friends[index] = CrudHelpers.userObjectIDtoInfo(friendObjID).model_dump(include={"uuid", "lastUpdate"})
+
+    info = userInfo.model_dump(exclude={"avatar", "password", "id"})
 
     return info
 
@@ -269,6 +272,53 @@ async def modifyUserPassword(newPassword: Password,
     return {"detail": "ok"}
 
 
+@userRouter.delete('/{uuid}')
+@rateLimit(10, 30)
+async def deleteFriend(userInfo: UserSchema = Depends(getSelfInfo),
+                       targetInfo: UserSchema = Depends(getUserInfo)):
+    if userInfo.id == targetInfo.id \
+            or targetInfo.id not in userInfo.friends \
+            or userInfo.id not in targetInfo.friends:
+        raise HTTPException(status_code=403)
+
+    ACCOUNT.update(
+        {"uuid": userInfo.uuid},
+        {"$pull": {"friends": targetInfo.id}},
+    )
+    ACCOUNT.update(
+        {"uuid": targetInfo.uuid},
+        {"$pull": {"friends": userInfo.id}},
+    )
+
+    removeMessage = BroadcastMessageSchema(
+        time=timestamp(),
+        type="system",
+        group=targetInfo.uuid,
+        groupType="friend",
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            content=f"已解除好友关系",
+        )
+    )
+    await WCM.sendingGroupMessage(userInfo.uuid, removeMessage)
+
+    notificationMessage = NotificationMsgSchema(
+        time=timestamp(),
+        subType=NotificationMsgSubtype.NEGATIVE.value,
+        isGroupMessage=False,
+        target=targetInfo.uuid,
+        blank=userInfo.uuid,
+        payload='您已不在"{}"的好友列表中',
+    )
+    asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, userInfo.username, notificationMessage))
+
+    virtualGroupID = getVirtualGroupID(userInfo, targetInfo)
+    WCM.disconnectUserFromGroup(userInfo.uuid, virtualGroupID)
+    WCM.disconnectUserFromGroup(targetInfo.uuid, virtualGroupID)
+
+    return {"detail": "ok"}
+
+
 @userRouter.post('/{uuid}/verify/request')
 @rateLimit(10, 30)
 async def friendRequest(reason: Reason,
@@ -277,7 +327,11 @@ async def friendRequest(reason: Reason,
                                 userInfo=userInfo,
                                 isGroupRequest=False,
                                 uuid=uuid,
-                                checkers=[RequestValidate.notExist, RequestValidate.notSelf],
+                                checkers=[
+                                    RequestValidate.notExist,
+                                    RequestValidate.notSelf,
+                                    RequestValidate.notFriend,
+                                ],
                             )()
                         )):
     '''
@@ -358,29 +412,16 @@ async def requestAccept(time: str = Path(...),
     '''
     userInfo, targetInfo, requestInfo = info.userInfo, info.targetInfo, info.requestInfo
     currentTime = timestamp()
-    name = f"{targetInfo.username}和{userInfo.username}的群聊"
     currentState = RequestState.ACCEPTED.value
-    groupID = str(uuid4().int)[::4]
-    newGroup = GroupSchema(
-        group=groupID,
-        name=name,
-        avatar=Default.DEFAULT_AVATAR.value,
-        lastUpdate=currentTime,
-        owner=targetInfo.id,
-        question={},
-        admin=[userInfo.id],
-        user=[targetInfo.id, userInfo.id],
-    ).model_dump()
-    del newGroup["id"]
+    groupID = getVirtualGroupID(userInfo, targetInfo)
 
-    groupObjID = GROUP.add(newGroup).inserted_id
     ACCOUNT.update(
         {"uuid": targetInfo.uuid},
-        {"$push": {"groups": groupObjID}}
+        {"$push": {"friends": userInfo.id}}
     )
     ACCOUNT.update(
         {"uuid": userInfo.uuid},
-        {"$push": {"groups": groupObjID}}
+        {"$push": {"friends": targetInfo.id}}
     )
     FRIEND_REQUEST.update(
         {"time": time},
@@ -388,8 +429,8 @@ async def requestAccept(time: str = Path(...),
     )
     Database.CLIENT.value[Database.STORAGE_DB.value][groupID].create_index([('time', 1)], unique=True)
 
-    WCM.userJoinedGroup(requestInfo.senderID, groupID)
-    WCM.userJoinedGroup(requestInfo.target, groupID)
+    WCM.userJoinedGroup(requestInfo.senderID, groupID, "friend")
+    WCM.userJoinedGroup(requestInfo.target, groupID, "friend")
 
     # 向发起方推送加好友成功的通知
     notificationMessage = NotificationMsgSchema(
@@ -406,13 +447,15 @@ async def requestAccept(time: str = Path(...),
     sysMessage = SysMessageSchema(
         time=currentTime,
         type=SystemMessageType.FRIENDED.value,
-        target=groupID,
-        targetKey=time,
+        target=targetInfo.uuid,
+        targetKey=targetInfo.lastUpdate,
         state=currentState,
         payload="",
     )
-    asyncio.create_task(WCM.sendingSystemMessage(requestInfo.senderID, sysMessage))
-    asyncio.create_task(WCM.sendingSystemMessage(requestInfo.target, sysMessage))
+    await WCM.sendingSystemMessage(requestInfo.target, sysMessage)
+    sysMessage.target = userInfo.uuid
+    sysMessage.targetKey = userInfo.lastUpdate
+    await WCM.sendingSystemMessage(requestInfo.senderID, sysMessage)
 
     # 更新申请结果
     sysMessage = SysMessageSchema(
@@ -431,13 +474,14 @@ async def requestAccept(time: str = Path(...),
     joinedMessage = BroadcastMessageSchema(
         time=currentTime,
         type="system",
-        group=groupID,
+        group=targetInfo.uuid,
+        groupType="friend",
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content="我们已经是好友了，一起来聊天吧！",
         )
     )
-    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, groupID, joinedMessage))
+    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, joinedMessage))
 
     return {"detail": "ok"}
 
@@ -487,3 +531,57 @@ async def requestReject(time: str = Path(...),
     asyncio.create_task(WCM.sendingSystemMessage(requestInfo.target, sysMessage))
 
     return {"detail": "ok"}
+
+
+@userRouter.post('/{uuid}/upload')
+@rateLimit(10, 30)
+async def groupFileUpload(userInfo: UserSchema = Depends(getSelfInfo),
+                          targetInfo: UserSchema = Depends(getUserInfo),
+                          fileInput: FileInput = Depends(InputValidate.validateInputFile)):
+    '''
+    好友上传文件
+    '''
+    if userInfo.id not in targetInfo.friends or targetInfo.id not in userInfo.friends:
+        raise HTTPException(status_code=403, detail="非好友之间禁止发送信息")
+
+    time = timestamp()
+    groupID = getVirtualGroupID(userInfo, targetInfo)
+    fileName, fileType, content = fileInput.fileName, fileInput.fileType, fileInput.content
+    hashcode = FS.add(content, fileName, fileType, groupID)
+
+    message = GetMessageSchema(
+        time=time,
+        type=fileType,
+        group=targetInfo.uuid,
+        groupType="friend",
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            name=fileName,
+            size=len(content),
+            content=hashcode,
+        )
+    )
+    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, message))
+
+    API.LOGGER.value.info(f"{userInfo.uuid} 在 {targetInfo.uuid}(friend) 发送了 {fileType} 类型的消息({time})")
+    return {"detail": "ok"}
+
+
+@userRouter.get('/{uuid}/download/{hashcode}')
+@rateLimit(10, 30)
+async def downloadFile(userInfo: UserSchema = Depends(getSelfInfo),
+                       targetInfo: UserSchema = Depends(getUserInfo),
+                       file: FileStorageSchema = Depends(OutputFileValidate.exists_friend)):
+    if userInfo.id not in targetInfo.friends or targetInfo.id not in userInfo.friends:
+        raise HTTPException(status_code=403, detail="非好友之间禁止发送信息")
+
+    READ_SIZE = 1024 * 1024  # 1MB
+
+    def iter():
+        while chunk := file.file.read(READ_SIZE):
+            yield chunk
+            
+    res = StreamingResponse(iter(), media_type=file.type)
+    res.headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(file.name)}"
+    res.headers["Content-Length"] = str(file.file.length)
+    return res

@@ -39,8 +39,8 @@ async def websocketConnection(websocket: WebSocket,
                 getMessage = GetMessageSchema.model_validate(message)
                 if not getMessage.payload.meta:
                     getMessage.payload.meta = dict()
-                API.LOGGER.value.info(f"{info.uuid} 在 {message['group']} 发送了 {message['type']} 类型的消息({time})")
-                asyncio.create_task(WCM.sendingGroupMessage(info.uuid, message["group"], getMessage, info.device))
+                API.LOGGER.value.info(f"{info.uuid} 在 {getMessage.group}({getMessage.groupType}) 发送了 {getMessage.type} 类型的消息 ({time})")
+                asyncio.create_task(WCM.sendingGroupMessage(info.uuid, getMessage, info.device))
             except HTTPException:
                 API.LOGGER.value.info(f"{info.uuid} 触发了速率限制")
                 sysMsg = SysMessageSchema(

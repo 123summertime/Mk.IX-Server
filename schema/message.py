@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 from public import RequestState
@@ -14,6 +16,7 @@ class GetMessageSchema(BaseModel):
     time: str
     type: str
     group: str
+    groupType: Literal['group', 'friend']
     senderID: str = ""   # user集合中的uuid
     payload: MessagePayload
 

@@ -1,4 +1,4 @@
-from typing import List, Any
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -12,4 +12,5 @@ class UserSchema(BaseModel):
     bio: str | None = None
     lastSeen: dict[str, str] | None = None      # 上次下线时间
     lastUpdate: str | None = None    # 上次更新时间 只有在userName或avatar改变时才会更新
-    groups: List[Any] = []    # 元素: 群objectID
+    groups: list[Any] = []    # 元素: 群objectID
+    friends: list[Any] = []

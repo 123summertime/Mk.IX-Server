@@ -9,23 +9,28 @@ from .rateLimit import rateLimit
 from .checker import beforeSendingCheck
 from .modifier import beforeSendingModify
 from .crud import DB_CRUD, ACCOUNT, GROUP, CrudHelpers
-from .helper import timestamp
+from .helper import timestamp, getVirtualGroupID, getTargetFromVirtualGroupID
 
 
 class GroupItem:
-    def __init__(self, groupID):
+    def __init__(self, groupID: str, type_: str):
         self.groupID = groupID
         self._collection = DB_CRUD(Database.STORAGE_DB.value, groupID, StorageSchema)
         self._userInGroup = set()
+        self._type = type_
 
     def __repr__(self):
-        return f"In Group: {self.groupID} -> {str(self._userInGroup)}"
+        return f"{self.groupID}({self._type}) -> {str(self._userInGroup)}"
 
     def addUser(self, userID):
         self._userInGroup.add(userID)
 
     def removeUser(self, userID):
         self._userInGroup.remove(userID)
+
+    @property
+    def getType(self):
+        return self._type
 
     @property
     def onlineUserList(self):
@@ -48,28 +53,34 @@ class WebsocketConnectionManager:
         self._userGroups = defaultdict(set)          # K: userID    V: set(groupID)
 
         '''
-        userID ─── deviceID ─── websocket
-           └────── groupID ──── groupItem
+        userID ───> deviceID ───> websocket
+           └──────> groupID ────> groupItem
         '''
 
     def __contains__(self, userID):
         return userID in self._users
 
     def __repr__(self):
-        return f"User: {self._users}\n Device: {self._device.keys()}\n Group: {self._groups}\n UserGroup: {self._userGroups}"
+        return f"User: {self._users}\n " \
+               f"Device: {self._device.keys()}\n " \
+               f"Group: {self._groups}\n" \
+               f"UserGroup: {self._userGroups}\n" \
+
 
     def userJoinedGroup(self,
                         userID: str,
-                        groupID: str):
+                        groupID: str,
+                        type_: str):
         if userID in self._users:
             self._userGroups[userID].add(groupID)
-            self._userConnectToGroupItem(userID, groupID)
+            self._userConnectToGroupItem(userID, groupID, type_)
 
     def _userConnectToGroupItem(self,
                                 userID: str,
-                                groupID: str):
+                                groupID: str,
+                                type_: str):
         if groupID not in self._groups:
-            self._groups[groupID] = GroupItem(groupID)
+            self._groups[groupID] = GroupItem(groupID, type_)
         self._groups[groupID].addUser(userID)
         self._userGroups[userID].add(groupID)
 
@@ -109,16 +120,22 @@ class WebsocketConnectionManager:
 
         userInfo = ACCOUNT.query(
             {"uuid": userID},
-            {"groups": 1, "lastSeen": 1},
+            {"groups": 1, "friends": 1, "lastSeen": 1},
         )
 
         groupIDs = list(map(lambda i: CrudHelpers.groupObjectIDtoInfo(i).group, userInfo.groups))
+        friends = map(lambda i: CrudHelpers.userObjectIDtoInfo(i).uuid, userInfo.friends)
+        friendsVirtualGroupID = list(map(lambda i: getVirtualGroupID(userID, i), friends))
         for groupID in groupIDs:
-            self._userConnectToGroupItem(userID, groupID)
+            self._userConnectToGroupItem(userID, groupID, "group")
+        for groupID in friendsVirtualGroupID:
+            self._userConnectToGroupItem(userID, groupID, "friend")
 
         lastSeen = userInfo.lastSeen.get(deviceID, timestamp())
         asyncio.create_task(self._postOfflineNotificationMessages(userID, lastSeen, websocket))
-        asyncio.create_task(self._postOfflineGroupMessages(groupIDs, lastSeen, websocket))
+        asyncio.create_task(self._postOfflineGroupMessages(userID, groupIDs, lastSeen, websocket))
+        asyncio.create_task(self._postOfflineGroupMessages(userID, friendsVirtualGroupID, lastSeen, websocket))
+        print(WCM)
 
     async def _postOfflineNotificationMessages(self,
                                                userID: str,
@@ -151,6 +168,7 @@ class WebsocketConnectionManager:
             await websocket.send_json(m.model_dump())
 
     async def _postOfflineGroupMessages(self,
+                                        userID: str,
                                         groupIDs: list,
                                         lastSeen: str,
                                         websocket: WebSocket):
@@ -158,6 +176,8 @@ class WebsocketConnectionManager:
         发送用户离线时收到的消息
         '''
         for groupID in groupIDs:
+            type_ = self._groups[groupID].getType
+
             messages = self._groups[groupID].collectionCRUD.queryMany(
                 {"time": {"$gt": lastSeen}},
                 {"_id": 0},
@@ -171,7 +191,7 @@ class WebsocketConnectionManager:
                 m = SendMessageSchema(
                     time=msg.time,
                     type=msg.type,
-                    group=groupID,
+                    group=groupID if type_ == "group" else getTargetFromVirtualGroupID(groupID, userID),
                     senderID=msg.senderID,
                     senderKey=userInfo.lastUpdate,
                     payload=msg.payload,
@@ -208,14 +228,14 @@ class WebsocketConnectionManager:
             del self._userGroups[userID]
         del self._device[deviceID]
 
-    async def disconnectUserFromGroup(self,
-                                      userID: str,
-                                      groupID: str):
+    def disconnectUserFromGroup(self,
+                                userID: str,
+                                groupID: str):
         groupItem = self._groups[groupID]
         groupItem.removeUser(userID)
         self._userGroups[userID].remove(groupID)
 
-    async def disconnectGroup(self, groupID):
+    def disconnectGroup(self, groupID):
         groupItem = self._groups[groupID]
         for userID in groupItem.onlineUserList:
             self._userGroups[userID].remove(groupID)
@@ -248,13 +268,15 @@ class WebsocketConnectionManager:
     @rateLimit(Limits.MESSAGE_RATE.value, 1)
     async def sendingGroupMessage(self,
                                   userID: str,
-                                  groupID: str,
                                   message: GetMessageSchema,
                                   device: str | None = None):
+        if message.groupType == "friend":
+            message.group = getVirtualGroupID(userID, message.group)
+        groupID = message.group
         if userID not in self._userGroups or groupID not in self._userGroups[userID]:
             return
 
-        check = beforeSendingCheck(userID, groupID, message)
+        check = beforeSendingCheck(userID, groupID,  message)
         modify = beforeSendingModify(userID, groupID, message) if check else check
         result = check and modify
         if not result:
@@ -267,6 +289,7 @@ class WebsocketConnectionManager:
             return
 
         if device:
+            # 返回发送的消息ID
             sysMsg = SysMessageSchema(
                 time=timestamp(),
                 type=SystemMessageType.ECHO.value,
@@ -286,13 +309,22 @@ class WebsocketConnectionManager:
             senderID=message.senderID,
             senderKey=userInfo.lastUpdate,
             payload=message.payload,
-        ).model_dump()
+        )
 
         groupItem = self._groups[groupID]
-        for userID in groupItem.onlineUserList:
-            for device in self._users[userID]:
-                ws = self._device[device]
-                asyncio.create_task(ws.send_json(sendMessage))
+        if groupItem.getType == "group":
+            m = sendMessage.model_dump()
+            for userID in groupItem.onlineUserList:
+                for device in self._users[userID]:
+                    ws = self._device[device]
+                    asyncio.create_task(ws.send_json(m))
+        else:
+            for userID in groupItem.onlineUserList:
+                sendMessage.group = getTargetFromVirtualGroupID(groupID, userID)
+                m = sendMessage.model_dump()
+                for device in self._users[userID]:
+                    ws = self._device[device]
+                    asyncio.create_task(ws.send_json(m))
 
         if message.type != "revoke":
             storageMessage = StorageSchema(

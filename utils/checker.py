@@ -56,12 +56,21 @@ def revokeMessageChecker(userID: str,
         {"uuid": getMessage.senderID},
         {"_id": 1}
     )
+    if not userObjID or not targetObjID:
+        return CheckerState.NOT_EXIST
+
+    # 好友之间只能撤回自己的消息
+    if message.groupType == 'friend':
+        if userObjID.id == targetObjID.id:
+            return CheckerState.OK
+        return CheckerState.NO_PERMISSION
+
     targetGroup = GROUP.query(
         {"group": groupID},
         {"owner": 1, "admin": 1}
     )
 
-    if not userObjID or not userObjID or not targetGroup:
+    if not targetGroup:
         return CheckerState.NOT_EXIST
 
     isOwner = userObjID.id == targetGroup.owner

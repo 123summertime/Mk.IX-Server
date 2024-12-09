@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from jose import jwt
 
 from public import API, Auth, Database, Limits
+from schema.user import UserSchema
 from .crud import FS
 
 
@@ -29,6 +30,26 @@ def createAccessToken(uuid, isBot) -> str:
 
     token = jwt.encode(encode, Auth.SECRET_KEY.value, algorithm=Auth.ALGORITHM.value)
     return token
+
+
+def getVirtualGroupID(user1: UserSchema | str, user2: UserSchema | str) -> str:
+    '''
+    user1和user2是好友，虚拟群号通过以下方式计算
+    '''
+    if isinstance(user1, UserSchema):
+        user1 = user1.uuid
+    if isinstance(user2, UserSchema):
+        user2 = user2.uuid
+    return str(int(user1) * int(user2))
+
+
+def getTargetFromVirtualGroupID(groupID: str, user: UserSchema | str):
+    '''
+    getVirtualGroupID的逆运算
+    '''
+    if isinstance(user, UserSchema):
+        user = user.uuid
+    return str(int(groupID) // int(user))
 
 
 def cleaner():

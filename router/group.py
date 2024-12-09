@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import StreamingResponse
 
 from depends import PermissionValidate, TargetValidate, CheckPermission, RequestValidate, CheckTarget, \
-    CheckRequest, outputFileValidate, getGroupInfoWithAvatar, getSelfInfo
+    CheckRequest, OutputFileValidate, getGroupInfoWithAvatar, getSelfInfo
 from schema import InputValidate, FileInput, GroupSchema, Info, GroupA, GroupQA, GroupRegister, Avatar, \
     Reason, GroupName, GroupAnnouncement,  GetMessageSchema, SysMessageSchema, MessagePayload, \
     BroadcastMessageSchema, RequestMsgSchema, FileStorageSchema, NotificationMsgSchema, UserSchema
@@ -35,8 +35,7 @@ async def makeGroup(groupRegister: GroupRegister,
         question={Q: A},
         admin=[],
         user=[userInfo.id],
-    ).model_dump()
-    del newGroup["id"]
+    ).model_dump(exclude={"id"})
 
     groupObjID = GROUP.add(newGroup).inserted_id
     ACCOUNT.update(
@@ -45,19 +44,20 @@ async def makeGroup(groupRegister: GroupRegister,
     )
     Database.CLIENT.value[Database.STORAGE_DB.value][groupID].create_index([('time', 1)], unique=True)
 
-    WCM.userJoinedGroup(userInfo.uuid, groupID)
+    WCM.userJoinedGroup(userInfo.uuid, groupID, "group")
 
     # 发送创建群的广播消息
     buildMessage = BroadcastMessageSchema(
         time=time,
         type="system",
         group=groupID,
+        groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"'{name}'群已创建",
         )
     )
-    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, groupID, buildMessage))
+    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, buildMessage))
 
     return {"groupID": groupID}
 
@@ -85,12 +85,13 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
         time=time,
         type="system",
         group=groupInfo.group,
+        groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content="该群已被群主解散",
         )
     )
-    await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, dismissMessage)
+    await WCM.sendingGroupMessage(userInfo.uuid, dismissMessage)
 
     # 发送解散通知
     for userObjID in groupInfo.user:
@@ -105,7 +106,7 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
         )
         asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
 
-    asyncio.create_task(WCM.disconnectGroup(groupInfo.group))
+    WCM.disconnectGroup(groupInfo.group)
 
     return {"detail": "ok"}
 
@@ -188,13 +189,14 @@ async def deleteSelf(info: Info = Depends(CheckPermission(PermissionValidate.mem
         time=timestamp(),
         type="system",
         group=groupInfo.group,
+        groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"{userInfo.username}已退出该群",
         )
     )
-    await WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, removeMessage)
-    asyncio.create_task(WCM.disconnectUserFromGroup(userInfo.uuid, groupInfo.group))
+    await WCM.sendingGroupMessage(userInfo.uuid, removeMessage)
+    WCM.disconnectUserFromGroup(userInfo.uuid, groupInfo.group)
 
     return {"detail": "ok"}
 
@@ -226,12 +228,13 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
         time=timestamp(),
         type="system",
         group=groupInfo.group,
+        groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"{targetInfo.username}已被移出群聊",
         )
     )
-    await WCM.sendingGroupMessage(targetInfo.uuid, groupInfo.group, removeMessage)
+    await WCM.sendingGroupMessage(targetInfo.uuid, removeMessage)
 
     # 向被移除的人发送通知
     notificationMessage = NotificationMsgSchema(
@@ -243,7 +246,7 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
         payload='你已被移出群"{}"',
     )
     asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
-    asyncio.create_task(WCM.disconnectUserFromGroup(targetInfo.uuid, groupInfo.group))
+    WCM.disconnectUserFromGroup(targetInfo.uuid, groupInfo.group)
 
     return {"detail": "ok"}
 
@@ -340,12 +343,13 @@ async def modifyGroupName(newName: GroupName,
         time=timestamp(),
         type="system",
         group=groupInfo.group,
+        groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f'{userInfo.username}修改群名为"{newName.name}"',
         )
     )
-    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, message))
+    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, message))
 
     return {"detail": "ok"}
 
@@ -422,19 +426,20 @@ async def join(answer: GroupA,
         {"$push": {"groups": groupInfo.id}}
     )
 
-    WCM.userJoinedGroup(userInfo.uuid, groupInfo.group)
+    WCM.userJoinedGroup(userInfo.uuid, groupInfo.group, "group")
 
     # 发送用户加入群聊的系统消息
     joinedMessage = BroadcastMessageSchema(
         time=timestamp(),
         type="system",
         group=groupInfo.group,
+        groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"{userInfo.username}加入该群",
         )
     )
-    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, joinedMessage))
+    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, joinedMessage))
 
     # 向用户推送入群成功的系统信息
     sysMessage = SysMessageSchema(
@@ -566,7 +571,7 @@ async def requestAccept(time: str = Path(...),
         {"$set": {"state": currentState}}
     )
 
-    WCM.userJoinedGroup(targetInfo.uuid, groupInfo.group)
+    WCM.userJoinedGroup(targetInfo.uuid, groupInfo.group, "group")
 
     # 向用户发送通知消息
     notificationMessage = NotificationMsgSchema(
@@ -608,12 +613,13 @@ async def requestAccept(time: str = Path(...),
         time=timestamp(),
         type="system",
         group=groupInfo.group,
+        groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"{targetInfo.username}加入该群",
         )
     )
-    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, joinedMessage))
+    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, joinedMessage))
 
     return {"detail": "ok"}
 
@@ -676,7 +682,7 @@ async def requestReject(time: str = Path(...),
 async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidate.member)),
                           fileInput: FileInput = Depends(InputValidate.validateInputFile)):
     '''
-    上传文件
+    群上传文件
     '''
     time = timestamp()
     fileName, fileType, content = fileInput.fileName, fileInput.fileType, fileInput.content
@@ -687,6 +693,7 @@ async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidat
         time=time,
         type=fileType,
         group=groupInfo.group,
+        groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
             name=fileName,
@@ -694,16 +701,16 @@ async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidat
             content=hashcode,
         )
     )
-    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, groupInfo.group, message))
+    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, message))
 
-    API.LOGGER.value.info(f"{userInfo.uuid} 在 {groupInfo.group} 发送了 {fileType} 类型的消息({time})")
+    API.LOGGER.value.info(f"{userInfo.uuid} 在 {groupInfo.group}(group) 发送了 {fileType} 类型的消息({time})")
     return {"detail": "ok"}
 
 
 @groupRouter.get('/{group}/download/{hashcode}')
 @rateLimit(10, 30)
 async def downloadFile(info: Info = Depends(CheckPermission(PermissionValidate.member)),
-                       file: FileStorageSchema = Depends(outputFileValidate.exists)):
+                       file: FileStorageSchema = Depends(OutputFileValidate.exists_group)):
     READ_SIZE = 1024 * 1024  # 1MB
 
     def iter():

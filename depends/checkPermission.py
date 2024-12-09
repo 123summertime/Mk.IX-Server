@@ -2,7 +2,7 @@ from fastapi import HTTPException, Depends, Path
 
 from .getInfo import getSelfInfo, getGroupInfo, getUserInfo, getRequest
 from schema import GroupSchema, UserSchema, Info, RequestMsgSchema, FileStorageSchema
-from utils import FS, timestamp
+from utils import FS, timestamp, getVirtualGroupID
 from public import RequestState, Limits
 
 
@@ -155,15 +155,35 @@ class RequestValidate:
             raise HTTPException(status_code=403, detail="不允许向自己发送好友请求")
         return True
 
-
-class outputFileValidate:
     @staticmethod
-    def exists(group: str = Path(...),
-               hashcode: str = Path(...)) -> FileStorageSchema:
+    def notFriend(userInfo: UserSchema,
+                  targetInfo: UserSchema,
+                  **kwargs):
+        if userInfo.id in targetInfo.friends or targetInfo.id in userInfo.friends:
+            raise HTTPException(status_code=403, detail="已经是好友了")
+        return True
+
+
+class OutputFileValidate:
+    @staticmethod
+    def exists_group(group: str = Path(...),
+                     hashcode: str = Path(...)) -> FileStorageSchema:
         file = FS.query(hashcode)
         if not file:
             raise HTTPException(status_code=404, detail=f"文件不存在或已过期")
         if group not in file.group or file.group[group] <= 0:
+            raise HTTPException(status_code=403, detail=f"文件不属于该群")
+        return file
+
+    @staticmethod
+    def exists_friend(uuid: str = Path(...),
+                      userInfo: UserSchema = Depends(getSelfInfo),
+                      hashcode: str = Path(...)) -> FileStorageSchema:
+        file = FS.query(hashcode)
+        if not file:
+            raise HTTPException(status_code=404, detail=f"文件不存在或已过期")
+        groupID = getVirtualGroupID(uuid, userInfo.uuid)
+        if groupID not in file.group or file.group[groupID] <= 0:
             raise HTTPException(status_code=403, detail=f"文件不属于该群")
         return file
 
