@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -13,10 +13,11 @@ class GroupSchema(BaseModel):
     avatar: str | None = None
     lastUpdate: str | None = None    # 上次更新时间 只有在name或avatar改变时才会更新
     owner: Any = None                # 群主objectID
-    admin: List[Any] = []            # 元素:管理员objectID
-    user: List[Any] = []             # 元素:用户objectID
-    question: Dict[str, str] = {}    # {Q: A}
+    admin: list[Any] = []            # 元素:管理员objectID
+    user: list[Any] = []             # 元素:用户objectID
+    question: dict[str, str] = {}    # {Q: A}
     announcement: str = ""           # 群公告
+    ban: dict[str, str] = {}         # 群禁言 {uuid: end_time}
 
 
 class Info(BaseModel):

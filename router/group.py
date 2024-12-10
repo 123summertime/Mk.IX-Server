@@ -9,7 +9,7 @@ from depends import PermissionValidate, TargetValidate, CheckPermission, Request
     CheckRequest, OutputFileValidate, getGroupInfoWithAvatar, getSelfInfo
 from schema import InputValidate, FileInput, GroupSchema, Info, GroupA, GroupQA, GroupRegister, Avatar, \
     Reason, GroupName, GroupAnnouncement,  GetMessageSchema, SysMessageSchema, MessagePayload, \
-    BroadcastMessageSchema, RequestMsgSchema, FileStorageSchema, NotificationMsgSchema, UserSchema
+    BroadcastMessageSchema, RequestMsgSchema, FileStorageSchema, NotificationMsgSchema, UserSchema, GroupBan
 from public import API, Default, Limits, Database, RequestState, SystemMessageType, NotificationMsgSubtype
 from utils import ACCOUNT, GROUP, FS, CrudHelpers, GROUP_REQUEST, timestamp, rateLimit, WCM
 
@@ -197,6 +197,55 @@ async def deleteSelf(info: Info = Depends(CheckPermission(PermissionValidate.mem
     )
     await WCM.sendingGroupMessage(userInfo.uuid, removeMessage)
     WCM.disconnectUserFromGroup(userInfo.uuid, groupInfo.group)
+
+    return {"detail": "ok"}
+
+
+@groupRouter.get("/{group}/members/{uuid}/ban")
+@rateLimit(30, 30)
+async def getUserBanState(info: Info = Depends(CheckPermission(PermissionValidate.admin)),
+                          info2: Info = Depends(CheckTarget(TargetValidate.member))):
+    '''
+    获取群内用户禁言状态
+    '''
+    info |= info2
+    groupInfo, targetInfo = info.groupInfo, info.targetInfo
+    if targetInfo.uuid not in groupInfo.ban or groupInfo.ban[targetInfo.uuid] < timestamp():
+        return {"ban": False, "time": ""}
+    return {"ban": True, "time": groupInfo.ban[targetInfo.uuid]}
+
+
+@groupRouter.post("/{group}/members/{uuid}/ban")
+@rateLimit(30, 30)
+async def banUser(t: GroupBan,
+                  info: Info = Depends(CheckPermission(PermissionValidate.admin)),
+                  info2: Info = Depends(CheckTarget(TargetValidate.member,
+                                                    TargetValidate.notSelf,
+                                                    TargetValidate.notOwner))):
+    '''
+    设置群禁言
+    '''
+    info |= info2
+    userInfo, groupInfo, targetInfo = info.userInfo, info.groupInfo, info.targetInfo
+
+    endTime = str(int(timestamp()) + (t.duration * 60 * 1000))
+    GROUP.update(
+        {"group": groupInfo.group},
+        {"$set": {f"ban.{targetInfo.uuid}": endTime}}
+    )
+    WCM.updateGroupBan(groupInfo.group, targetInfo.uuid, endTime)
+
+    banMessage = BroadcastMessageSchema(
+        time=timestamp(),
+        type="system",
+        group=groupInfo.group,
+        groupType="group",
+        senderID=userInfo.uuid,
+        payload=MessagePayload(
+            content=f"{targetInfo.username}已被禁言{str(t.duration)}分钟" if t.duration else f"{targetInfo.username}已被解除禁言",
+        )
+    )
+    asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, banMessage))
 
     return {"detail": "ok"}
 
@@ -684,6 +733,11 @@ async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidat
     '''
     群上传文件
     '''
+    userInfo, groupInfo = info.userInfo, info.groupInfo
+    ok, _ = WCM.getGroupBan(groupInfo.group, userInfo.uuid)
+    if not ok:
+        raise HTTPException(status_code=403, detail="您已被禁言")
+
     time = timestamp()
     fileName, fileType, content = fileInput.fileName, fileInput.fileType, fileInput.content
     groupInfo, userInfo = info.groupInfo, info.userInfo
@@ -710,7 +764,7 @@ async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidat
 @groupRouter.get('/{group}/download/{hashcode}')
 @rateLimit(10, 30)
 async def downloadFile(info: Info = Depends(CheckPermission(PermissionValidate.member)),
-                       file: FileStorageSchema = Depends(OutputFileValidate.exists_group)):
+                       file: FileStorageSchema = Depends(OutputFileValidate.existsGroup)):
     READ_SIZE = 1024 * 1024  # 1MB
 
     def iter():

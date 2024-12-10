@@ -43,6 +43,14 @@ class Bio(BaseModel):
         return InputValidate.validateStringLength(s, Limits.USER_BIO_LENGTH_RANGE, "简介")
 
 
+class GroupBan(BaseModel):
+    duration: int
+
+    @validator('duration')
+    def validateBio(cls, s):
+        return InputValidate.validateIntSize(s, Limits.GROUP_BAN_MAX_TIME, "禁言时长")
+
+
 class GroupA(BaseModel):
     A: str
 

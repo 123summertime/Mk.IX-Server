@@ -166,8 +166,8 @@ class RequestValidate:
 
 class OutputFileValidate:
     @staticmethod
-    def exists_group(group: str = Path(...),
-                     hashcode: str = Path(...)) -> FileStorageSchema:
+    def existsGroup(group: str = Path(...),
+                    hashcode: str = Path(...)) -> FileStorageSchema:
         file = FS.query(hashcode)
         if not file:
             raise HTTPException(status_code=404, detail=f"文件不存在或已过期")
@@ -176,9 +176,9 @@ class OutputFileValidate:
         return file
 
     @staticmethod
-    def exists_friend(uuid: str = Path(...),
-                      userInfo: UserSchema = Depends(getSelfInfo),
-                      hashcode: str = Path(...)) -> FileStorageSchema:
+    def existsFriend(uuid: str = Path(...),
+                     userInfo: UserSchema = Depends(getSelfInfo),
+                     hashcode: str = Path(...)) -> FileStorageSchema:
         file = FS.query(hashcode)
         if not file:
             raise HTTPException(status_code=404, detail=f"文件不存在或已过期")

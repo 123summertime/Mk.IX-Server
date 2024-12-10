@@ -128,7 +128,6 @@ async def getWSToken(device: str = Query(...),
     # 历史登录设备已满，淘汰最久没有使用的设备
     if len(deviceInfo) == Limits.MAX_DEVICE.value:
         deviceInfo = {i: deviceInfo[i] for i in deviceInfo if deviceInfo[i] != min(deviceInfo.values())}
-        deviceInfo[deviceID] = time
 
     ACCOUNT.update(
         {"uuid": userInfo.uuid},
@@ -571,7 +570,7 @@ async def groupFileUpload(userInfo: UserSchema = Depends(getSelfInfo),
 @rateLimit(10, 30)
 async def downloadFile(userInfo: UserSchema = Depends(getSelfInfo),
                        targetInfo: UserSchema = Depends(getUserInfo),
-                       file: FileStorageSchema = Depends(OutputFileValidate.exists_friend)):
+                       file: FileStorageSchema = Depends(OutputFileValidate.existsFriend)):
     if userInfo.id not in targetInfo.friends or targetInfo.id not in userInfo.friends:
         raise HTTPException(status_code=403, detail="非好友之间禁止发送信息")
 

@@ -18,6 +18,13 @@ class InputValidate:
         return s
 
     @staticmethod
+    def validateIntSize(s: int, limit: Limits, name: str) -> int:
+        limit = limit.value
+        if not (limit['MIN'] <= s <= limit['MAX']):
+            raise HTTPException(status_code=400, detail=f"{name}的大小必须在{str(limit['MIN'])}至{str(limit['MAX'])}之间")
+        return s
+
+    @staticmethod
     def validateImageSize(image: str, limit: Limits, name: str) -> str:  # Base64
         limit = limit.value
         # 初步判定大小 1KB文件编码后约为1400字符

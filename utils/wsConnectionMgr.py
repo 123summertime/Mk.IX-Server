@@ -19,6 +19,12 @@ class GroupItem:
         self._userInGroup = set()
         self._type = type_
 
+        banList = GROUP.query(
+            {"group": groupID},
+            {"ban": 1}
+        )
+        self._ban = banList.ban if banList else dict()
+
     def __repr__(self):
         return f"{self.groupID}({self._type}) -> {str(self._userInGroup)}"
 
@@ -27,6 +33,14 @@ class GroupItem:
 
     def removeUser(self, userID):
         self._userInGroup.remove(userID)
+
+    def setBan(self, userID, endTime):
+        self._ban[userID] = endTime
+
+    def isBan(self, userID) -> tuple[bool, str]:
+        if userID not in self._ban or timestamp() >= self._ban[userID]:
+            return True, ""
+        return False, self._ban[userID]
 
     @property
     def getType(self):
@@ -67,25 +81,26 @@ class WebsocketConnectionManager:
                f"UserGroup: {self._userGroups}\n" \
 
 
-    def userJoinedGroup(self,
-                        userID: str,
-                        groupID: str,
-                        type_: str):
+    def updateGroupBan(self, groupID: str, userID: str, endTime: str):
+        if groupID not in self._groups:
+            self._groups[groupID] = GroupItem(groupID, "group")
+        self._groups[groupID].setBan(userID, endTime)
+
+    def getGroupBan(self, groupID: str, userID: str):
+        return self._groups[groupID].isBan(userID)
+
+    def userJoinedGroup(self, userID: str, groupID: str, type_: str):
         if userID in self._users:
             self._userGroups[userID].add(groupID)
             self._userConnectToGroupItem(userID, groupID, type_)
 
-    def _userConnectToGroupItem(self,
-                                userID: str,
-                                groupID: str,
-                                type_: str):
+    def _userConnectToGroupItem(self, userID: str, groupID: str, type_: str):
         if groupID not in self._groups:
             self._groups[groupID] = GroupItem(groupID, type_)
         self._groups[groupID].addUser(userID)
         self._userGroups[userID].add(groupID)
 
-    async def popDevice(self,
-                        userID: str):
+    async def popDevice(self, userID: str):
         ''' 该用户到达最大在线数量，随机pop一台设备 '''
         if len(self._users[userID]) >= Limits.MAX_ONLINE_DEVICE.value:
             device = list(self._users[userID])[0]
@@ -99,6 +114,7 @@ class WebsocketConnectionManager:
             try:
                 ws = self._device[device]
                 await ws.close()
+                del self._device[device]
             except Exception:
                 pass
 
@@ -125,17 +141,16 @@ class WebsocketConnectionManager:
 
         groupIDs = list(map(lambda i: CrudHelpers.groupObjectIDtoInfo(i).group, userInfo.groups))
         friends = map(lambda i: CrudHelpers.userObjectIDtoInfo(i).uuid, userInfo.friends)
-        friendsVirtualGroupID = list(map(lambda i: getVirtualGroupID(userID, i), friends))
+        friendVirtualGroupIDs = list(map(lambda i: getVirtualGroupID(userID, i), friends))
         for groupID in groupIDs:
             self._userConnectToGroupItem(userID, groupID, "group")
-        for groupID in friendsVirtualGroupID:
+        for groupID in friendVirtualGroupIDs:
             self._userConnectToGroupItem(userID, groupID, "friend")
 
-        lastSeen = userInfo.lastSeen.get(deviceID, timestamp())
+        lastSeen = userInfo.lastSeen.get(deviceID, max(userInfo.lastSeen.values()))
         asyncio.create_task(self._postOfflineNotificationMessages(userID, lastSeen, websocket))
         asyncio.create_task(self._postOfflineGroupMessages(userID, groupIDs, lastSeen, websocket))
-        asyncio.create_task(self._postOfflineGroupMessages(userID, friendsVirtualGroupID, lastSeen, websocket))
-        print(WCM)
+        asyncio.create_task(self._postOfflineGroupMessages(userID, friendVirtualGroupIDs, lastSeen, websocket))
 
     async def _postOfflineNotificationMessages(self,
                                                userID: str,
@@ -274,6 +289,16 @@ class WebsocketConnectionManager:
             message.group = getVirtualGroupID(userID, message.group)
         groupID = message.group
         if userID not in self._userGroups or groupID not in self._userGroups[userID]:
+            return
+
+        ok, detail = self.getGroupBan(groupID, userID)
+        if not ok and message.type != "system":
+            sysMsg = SysMessageSchema(
+                time=timestamp(),
+                type=SystemMessageType.BAN.value,
+                payload=detail,
+            )
+            asyncio.create_task(self.sendingSystemMessage(userID, sysMsg))
             return
 
         check = beforeSendingCheck(userID, groupID,  message)
