@@ -49,7 +49,10 @@ class InputValidate:
     @staticmethod
     async def audioValidator(filename: str, content: bytes) -> FileInput:
         limit = Limits.GROUP_AUDIO_LENGTH_RANGE.value
-        audio = AudioSegment.from_file(io.BytesIO(content))
+        try:
+            audio = AudioSegment.from_file(io.BytesIO(content))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"无法解析的文件")
         length = round(len(audio) / 1000)
         if not (limit['MIN'] <= length <= limit['MAX']):
             raise HTTPException(status_code=400, detail=f"语音时长必须在{limit['MIN']}s至{limit['MAX']}s之间")

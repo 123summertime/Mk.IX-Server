@@ -758,7 +758,7 @@ async def groupFileUpload(info: Info = Depends(CheckPermission(PermissionValidat
     asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, message))
 
     API.LOGGER.value.info(f"{userInfo.uuid} 在 {groupInfo.group}(group) 发送了 {fileType} 类型的消息({time})")
-    return {"detail": "ok"}
+    return {"time": time}
 
 
 @groupRouter.get('/{group}/download/{hashcode}')

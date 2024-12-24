@@ -1,3 +1,4 @@
+import json
 import asyncio
 from collections import defaultdict
 
@@ -275,10 +276,19 @@ class WebsocketConnectionManager:
 
     async def sendingSystemMessage(self,
                                    userID: str,
-                                   message: SysMessageSchema):
-        for device in self._users[userID]:
-            ws = self._device[device]
-            asyncio.create_task(ws.send_json(message.model_dump()))
+                                   message: SysMessageSchema,
+                                   *,
+                                   device: str = None):
+        for d in self._users[userID]:
+            if d == device or not device:
+                ws = self._device[d]
+                asyncio.create_task(ws.send_json(message.model_dump()))
+
+    async def sendingEchoMessage(self,
+                                 deviceID: str,
+                                 message: SysMessageSchema):
+        ws = self._device[deviceID]
+        asyncio.create_task(ws.send_json(message.model_dump()))
 
     @rateLimit(Limits.MESSAGE_RATE.value, 1)
     async def sendingGroupMessage(self,
@@ -313,15 +323,6 @@ class WebsocketConnectionManager:
             asyncio.create_task(self.sendingSystemMessage(userID, sysMsg))
             return
 
-        if device:
-            # 返回发送的消息ID
-            sysMsg = SysMessageSchema(
-                time=timestamp(),
-                type=SystemMessageType.ECHO.value,
-                payload=message.time
-            )
-            asyncio.create_task(self.sendingSystemMessage(userID, sysMsg))
-
         userInfo = ACCOUNT.query(
             {"uuid": message.senderID},
             {"_id": 0, "lastUpdate": 1}
@@ -339,17 +340,26 @@ class WebsocketConnectionManager:
         groupItem = self._groups[groupID]
         if groupItem.getType == "group":
             m = sendMessage.model_dump()
-            for userID in groupItem.onlineUserList:
-                for device in self._users[userID]:
-                    ws = self._device[device]
+            for uuid in groupItem.onlineUserList:
+                for d in self._users[uuid]:
+                    ws = self._device[d]
                     asyncio.create_task(ws.send_json(m))
         else:
-            for userID in groupItem.onlineUserList:
-                sendMessage.group = getTargetFromVirtualGroupID(groupID, userID)
+            for uuid in groupItem.onlineUserList:
+                sendMessage.group = getTargetFromVirtualGroupID(groupID, uuid)
                 m = sendMessage.model_dump()
-                for device in self._users[userID]:
-                    ws = self._device[device]
+                for d in self._users[uuid]:
+                    ws = self._device[d]
                     asyncio.create_task(ws.send_json(m))
+
+        if device:
+            # 返回发送的消息ID
+            sysMsg = SysMessageSchema(
+                time=timestamp(),
+                type=SystemMessageType.ECHO.value,
+                payload=json.dumps({"time": message.time, "echo": message.echo})
+            )
+            asyncio.create_task(self.sendingSystemMessage(userID, sysMsg, device=device))
 
         if message.type != "revoke":
             storageMessage = StorageSchema(

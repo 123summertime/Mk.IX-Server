@@ -179,7 +179,7 @@ async def profile(userInfo: UserSchema = Depends(getSelfInfo)):
         groupInfo = GROUP.query(
             {"_id": groupObjID},
             {"_id": 0, "group": 1, "lastUpdate": 1, "owner": 1, "admin": 1}
-        ).model_dump(exclude={"id", "name", "avatar"})
+        ).model_dump(include={"group", "lastUpdate", "owner", "admin"})
         groupInfo["owner"] = CrudHelpers.userObjectIDtoInfo(groupInfo["owner"]).model_dump(include={"uuid", "lastUpdate"})
         groupInfo["admin"] = [CrudHelpers.userObjectIDtoInfo(i).model_dump(include={"uuid", "lastUpdate"}) for i in groupInfo["admin"]]
         userInfo.groups[index] = groupInfo
@@ -187,7 +187,7 @@ async def profile(userInfo: UserSchema = Depends(getSelfInfo)):
     for index, friendObjID in enumerate(userInfo.friends):
         userInfo.friends[index] = CrudHelpers.userObjectIDtoInfo(friendObjID).model_dump(include={"uuid", "lastUpdate"})
 
-    info = userInfo.model_dump(exclude={"avatar", "password", "id"})
+    info = userInfo.model_dump(include={"uuid", "username", "bio", "lastUpdate", "groups", "friends"})
 
     return info
 

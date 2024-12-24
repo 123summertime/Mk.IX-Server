@@ -1,3 +1,4 @@
+import json
 import asyncio
 import traceback
 
@@ -32,7 +33,10 @@ async def websocketConnection(websocket: WebSocket,
             try:
                 message = await websocket.receive_json()
                 if not isinstance(message, dict):
-                    raise ValueError
+                    try:
+                        message = json.loads(message)
+                    except Exception:
+                        raise ValueError
                 time = timestamp()
                 message["time"] = time
                 message["senderID"] = info.uuid
@@ -49,7 +53,8 @@ async def websocketConnection(websocket: WebSocket,
                     payload="发送速度过快，请稍后再试",
                 )
                 await WCM.sendingSystemMessage(info.uuid, sysMsg)
-            except ValidationError:
+            except ValidationError as e:
+                print(e)
                 API.LOGGER.value.info(f"{info.uuid} 发送了无效的消息")
             except ValueError:
                 API.LOGGER.value.info(f"{info.uuid} 发送了无效的消息")

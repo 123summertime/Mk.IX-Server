@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional, Union
 
 from pydantic import BaseModel
 
@@ -18,6 +18,7 @@ class GetMessageSchema(BaseModel):
     group: str
     groupType: Literal['group', 'friend']
     senderID: str = ""   # user集合中的uuid
+    echo: Optional[Union[str, int]] = None
     payload: MessagePayload
 
 
