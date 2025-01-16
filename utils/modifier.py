@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pydub import AudioSegment
 
 from public import CheckerState, Database
-from schema import GetMessageSchema, MessagePayload, StorageSchema
+from schema import GetMessageSchema, MessagePayload, StorageSchema, BroadcastMeta
 from .crud import ACCOUNT, FS, DB_CRUD
 
 
@@ -39,15 +39,22 @@ def revokeMessageModifier(userID: str,
             {"$inc": {f"group.{groupID}": -1}}
         )
 
-    username = ACCOUNT.query(
+    userinfo = ACCOUNT.query(
         {"uuid": userID},
-        {"username": 1}
+        {"username": 1, "uuid": 1}
     )
 
     message.type = "revoke"
     message.payload = MessagePayload(
-        content=f"{username.username}撤回了一条{'' if userID == getMessage.senderID else '成员'}消息",
-        meta={"time": time},
+        content=f"{userinfo.username}撤回了一条{'' if userID == getMessage.senderID else '成员'}消息",
+        meta=BroadcastMeta(
+            operation="revoke",
+            var={
+                "time": time,
+                "id": userinfo.uuid,
+                "name": userinfo.username,
+            }
+        )
     )
 
     DB.update(

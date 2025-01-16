@@ -10,7 +10,7 @@ from depends import CheckRequest, RequestValidate, getSelfInfo, getUserInfo, che
 from public import API, Default, Database, Limits, RequestState, SystemMessageType, NotificationMsgSubtype
 from schema import GroupSchema, Info, UserRegister, Reason, Avatar, Username, Bio, Password, UserSchema, \
     SysMessageSchema, MessagePayload, BroadcastMessageSchema, RequestMsgSchema, WebsocketTokenSchema, \
-    NotificationMsgSchema, GetMessageSchema, InputValidate, FileInput, FileStorageSchema
+    NotificationMsgSchema, GetMessageSchema, InputValidate, FileInput, FileStorageSchema, BroadcastMeta
 from utils import rateLimit, ACCOUNT, GROUP, FRIEND_REQUEST, WS_TOKEN, CrudHelpers, hashPassword, timestamp, \
     createAccessToken, getVirtualGroupID, WCM, FS
 
@@ -297,6 +297,9 @@ async def deleteFriend(userInfo: UserSchema = Depends(getSelfInfo),
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"已解除好友关系",
+            meta=BroadcastMeta(
+                operation="friend_remove",
+            )
         )
     )
     await WCM.sendingGroupMessage(userInfo.uuid, removeMessage)
@@ -438,7 +441,7 @@ async def requestAccept(time: str = Path(...),
         isGroupMessage=False,
         target=requestInfo.senderID,
         blank=requestInfo.target,
-        payload='"{}"已通过你的好友申请',
+        payload='{}'f'({requestInfo.target})已通过你的好友申请',
     )
     asyncio.create_task(WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage))
 
@@ -478,6 +481,9 @@ async def requestAccept(time: str = Path(...),
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content="我们已经是好友了，一起来聊天吧！",
+            meta=BroadcastMeta(
+                operation="friended",
+            )
         )
     )
     asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, joinedMessage))
@@ -512,7 +518,7 @@ async def requestReject(time: str = Path(...),
         isGroupMessage=False,
         target=requestInfo.senderID,
         blank=requestInfo.target,
-        payload='"{}"已拒绝你的好友申请',
+        payload='{}'f'({requestInfo.target})已拒绝你的好友申请',
     )
     asyncio.create_task(WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage))
 

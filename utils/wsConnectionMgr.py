@@ -33,7 +33,7 @@ class GroupItem:
         self._userInGroup.add(userID)
 
     def removeUser(self, userID):
-        self._userInGroup.remove(userID)
+        self._userInGroup.discard(userID)
 
     def setBan(self, userID, endTime):
         self._ban[userID] = endTime
@@ -148,7 +148,7 @@ class WebsocketConnectionManager:
         for groupID in friendVirtualGroupIDs:
             self._userConnectToGroupItem(userID, groupID, "friend")
 
-        lastSeen = userInfo.lastSeen.get(deviceID, max(userInfo.lastSeen.values()))
+        lastSeen = userInfo.lastSeen.get(deviceID, max(userInfo.lastSeen.values()) if userInfo.lastSeen else timestamp())
         asyncio.create_task(self._postOfflineNotificationMessages(userID, lastSeen, websocket))
         asyncio.create_task(self._postOfflineGroupMessages(userID, groupIDs, lastSeen, websocket))
         asyncio.create_task(self._postOfflineGroupMessages(userID, friendVirtualGroupIDs, lastSeen, websocket))
@@ -212,7 +212,7 @@ class WebsocketConnectionManager:
                     senderKey=userInfo.lastUpdate,
                     payload=msg.payload,
                 )
-                await websocket.send_json(m.model_dump())
+                asyncio.create_task(websocket.send_json(m.model_dump()))
 
     async def disconnectUser(self,
                              userID: str,
@@ -249,7 +249,7 @@ class WebsocketConnectionManager:
                                 groupID: str):
         groupItem = self._groups[groupID]
         groupItem.removeUser(userID)
-        self._userGroups[userID].remove(groupID)
+        self._userGroups[userID].discard(groupID)
 
     def disconnectGroup(self, groupID):
         groupItem = self._groups[groupID]
@@ -311,17 +311,18 @@ class WebsocketConnectionManager:
             asyncio.create_task(self.sendingSystemMessage(userID, sysMsg))
             return
 
-        check = beforeSendingCheck(userID, groupID,  message)
-        modify = beforeSendingModify(userID, groupID, message) if check else check
-        result = check and modify
-        if not result:
-            sysMsg = SysMessageSchema(
-                time=timestamp(),
-                type=SystemMessageType.FAIL.value,
-                payload=result.value
-            )
-            asyncio.create_task(self.sendingSystemMessage(userID, sysMsg))
-            return
+        if message.type != "system":
+            check = beforeSendingCheck(userID, groupID, message)
+            modify = beforeSendingModify(userID, groupID, message) if check else check
+            result = check and modify
+            if not result:
+                sysMsg = SysMessageSchema(
+                    time=timestamp(),
+                    type=SystemMessageType.FAIL.value,
+                    payload=result.value
+                )
+                asyncio.create_task(self.sendingSystemMessage(userID, sysMsg))
+                return
 
         userInfo = ACCOUNT.query(
             {"uuid": message.senderID},

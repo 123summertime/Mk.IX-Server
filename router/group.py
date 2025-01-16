@@ -9,7 +9,8 @@ from depends import PermissionValidate, TargetValidate, CheckPermission, Request
     CheckRequest, OutputFileValidate, getGroupInfoWithAvatar, getSelfInfo
 from schema import InputValidate, FileInput, GroupSchema, Info, GroupA, GroupQA, GroupRegister, Avatar, \
     Reason, GroupName, GroupAnnouncement,  GetMessageSchema, SysMessageSchema, MessagePayload, \
-    BroadcastMessageSchema, RequestMsgSchema, FileStorageSchema, NotificationMsgSchema, UserSchema, GroupBan
+    BroadcastMessageSchema, RequestMsgSchema, FileStorageSchema, NotificationMsgSchema, UserSchema, GroupBan, \
+    BroadcastMeta
 from public import API, Default, Limits, Database, RequestState, SystemMessageType, NotificationMsgSubtype
 from utils import ACCOUNT, GROUP, FS, CrudHelpers, GROUP_REQUEST, timestamp, rateLimit, WCM
 
@@ -54,7 +55,14 @@ async def makeGroup(groupRegister: GroupRegister,
         groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
-            content=f"'{name}'群已创建",
+            content=f"{name}群已创建",
+            meta=BroadcastMeta(
+                operation="create_group",
+                var={
+                    "id": groupID,
+                    "name": name,
+                }
+            )
         )
     )
     asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, buildMessage))
@@ -89,6 +97,10 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content="该群已被群主解散",
+            meta=BroadcastMeta(
+                operation="delete_group",
+                var={"id": groupInfo.group},
+            )
         )
     )
     await WCM.sendingGroupMessage(userInfo.uuid, dismissMessage)
@@ -193,6 +205,13 @@ async def deleteSelf(info: Info = Depends(CheckPermission(PermissionValidate.mem
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"{userInfo.username}已退出该群",
+            meta=BroadcastMeta(
+                operation="left_group",
+                var={
+                    "id": userInfo.uuid,
+                    "name": userInfo.username,
+                }
+            )
         )
     )
     await WCM.sendingGroupMessage(userInfo.uuid, removeMessage)
@@ -243,6 +262,14 @@ async def banUser(t: GroupBan,
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"{targetInfo.username}已被禁言{str(t.duration)}分钟" if t.duration else f"{targetInfo.username}已被解除禁言",
+            meta=BroadcastMeta(
+                operation="ban" if t.duration else "lift_ban",
+                var={
+                    "id": targetInfo.uuid,
+                    "name": targetInfo.username,
+                    "duration": t.duration,
+                }
+            )
         )
     )
     asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, banMessage))
@@ -281,6 +308,13 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"{targetInfo.username}已被移出群聊",
+            meta=BroadcastMeta(
+                operation="left_group",
+                var={
+                    "id": targetInfo.uuid,
+                    "name": targetInfo.username,
+                }
+            )
         )
     )
     await WCM.sendingGroupMessage(targetInfo.uuid, removeMessage)
@@ -395,7 +429,15 @@ async def modifyGroupName(newName: GroupName,
         groupType="group",
         senderID=userInfo.uuid,
         payload=MessagePayload(
-            content=f'{userInfo.username}修改群名为"{newName.name}"',
+            content=f'{userInfo.username}修改群名为{newName.name}',
+            meta=BroadcastMeta(
+                operation="rename",
+                var={
+                    "id": userInfo.uuid,
+                    "name": userInfo.username,
+                    "newname": newName.name,
+                }
+            )
         )
     )
     asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, message))
@@ -486,6 +528,13 @@ async def join(answer: GroupA,
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"{userInfo.username}加入该群",
+            meta=BroadcastMeta(
+                operation="joined",
+                var={
+                    "id": userInfo.uuid,
+                    "name": userInfo.username,
+                }
+            )
         )
     )
     asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, joinedMessage))
@@ -629,7 +678,7 @@ async def requestAccept(time: str = Path(...),
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
-        payload='你加入群"{}"的申请已通过',
+        payload='你加入群{}'f'({groupInfo.group})的申请已通过',
     )
     asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
     sysMessage = SysMessageSchema(
@@ -666,6 +715,13 @@ async def requestAccept(time: str = Path(...),
         senderID=userInfo.uuid,
         payload=MessagePayload(
             content=f"{targetInfo.username}加入该群",
+            meta=BroadcastMeta(
+                operation="joined",
+                var={
+                    "id": targetInfo.uuid,
+                    "name": targetInfo.username
+                },
+            )
         )
     )
     asyncio.create_task(WCM.sendingGroupMessage(userInfo.uuid, joinedMessage))
@@ -704,7 +760,7 @@ async def requestReject(time: str = Path(...),
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
-        payload='你加入群"{}"的申请已被拒绝',
+        payload='你加入群{}'f'({groupInfo.group})的申请已被拒绝',
     )
     asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
 

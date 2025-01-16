@@ -5,11 +5,16 @@ from pydantic import BaseModel
 from public import RequestState
 
 
+class BroadcastMeta(BaseModel):
+    operation: str
+    var: Optional[dict] = None
+
+
 class MessagePayload(BaseModel):
-    name: str | None = None
-    size: int | None = None
+    name: Optional[str] = None
+    size: Optional[int] = None
     content: str
-    meta: dict | None = dict()
+    meta: Optional[Union[dict, BroadcastMeta]] = dict()
 
 
 class GetMessageSchema(BaseModel):
