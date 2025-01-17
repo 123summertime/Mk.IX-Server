@@ -122,6 +122,9 @@ async def getWSToken(device: str = Query(...),
             isGroupMessage=False,
             target=userInfo.uuid,
             payload=f"在新设备上登录(设备ID: {deviceID})",
+            meta=BroadcastMeta(
+                operation="new_device",
+            )
         )
         asyncio.create_task(WCM.sendingNotificationMessage(userInfo.uuid, "", msg))
 
@@ -310,7 +313,14 @@ async def deleteFriend(userInfo: UserSchema = Depends(getSelfInfo),
         isGroupMessage=False,
         target=targetInfo.uuid,
         blank=userInfo.uuid,
-        payload='您已不在"{}"的好友列表中',
+        payload='您已不在{}的好友列表中',
+        meta=BroadcastMeta(
+            operation="friend_remove",
+            var={
+                "id": userInfo.uuid,
+                "type": "user",
+            }
+        )
     )
     asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, userInfo.username, notificationMessage))
 
@@ -382,7 +392,7 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
     for msg in messages:
         senderInfo = ACCOUNT.query(
             {"uuid": msg.senderID},
-            {"_id": 0, "lastUpdate": 1},
+            {"lastUpdate": 1},
         )
         sysMessage = SysMessageSchema(
             time=msg.time,
@@ -441,7 +451,14 @@ async def requestAccept(time: str = Path(...),
         isGroupMessage=False,
         target=requestInfo.senderID,
         blank=requestInfo.target,
-        payload='{}'f'({requestInfo.target})已通过你的好友申请',
+        payload='{}已通过你的好友申请',
+        meta=BroadcastMeta(
+            operation="friend_request_accepted",
+            var={
+                "id": requestInfo.target,
+                "type": "user",
+            }
+        )
     )
     asyncio.create_task(WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage))
 
@@ -518,7 +535,14 @@ async def requestReject(time: str = Path(...),
         isGroupMessage=False,
         target=requestInfo.senderID,
         blank=requestInfo.target,
-        payload='{}'f'({requestInfo.target})已拒绝你的好友申请',
+        payload='{}已拒绝你的好友申请',
+        meta=BroadcastMeta(
+            operation="friend_request_rejected",
+            var={
+                "id": requestInfo.target,
+                "type": "user",
+            }
+        )
     )
     asyncio.create_task(WCM.sendingNotificationMessage(requestInfo.senderID, userInfo.username, notificationMessage))
 

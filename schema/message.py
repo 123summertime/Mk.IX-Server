@@ -7,7 +7,7 @@ from public import RequestState
 
 class BroadcastMeta(BaseModel):
     operation: str
-    var: Optional[dict] = None
+    var: dict = {}
 
 
 class MessagePayload(BaseModel):
@@ -44,7 +44,7 @@ class SendMessageSchema(BaseModel):
 class SysMessageSchema(BaseModel):
     time: str = ""
     type: str
-    subType: str | None = None
+    subType: Optional[str] = None
     target: str = ""
     targetKey: str = ""
     isSystemMessage: bool = True
@@ -52,3 +52,4 @@ class SysMessageSchema(BaseModel):
     senderID: str = ""
     senderKey: str = ""
     payload: str
+    meta: Optional[Union[dict, BroadcastMeta]] = None

@@ -53,6 +53,7 @@ def revokeMessageModifier(userID: str,
                 "time": time,
                 "id": userinfo.uuid,
                 "name": userinfo.username,
+                "sender": getMessage.senderID,
             }
         )
     )

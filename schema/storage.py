@@ -1,9 +1,9 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
 from public import RequestState, SystemMessageType
-from .message import MessagePayload
+from .message import MessagePayload, BroadcastMeta
 
 
 class StorageSchema(BaseModel):
@@ -45,3 +45,4 @@ class NotificationMsgSchema(BaseModel):
     target: str         # 发送给target
     blank: str = ""     # 用来填充payload中的{}
     payload: str
+    meta: Optional[BroadcastMeta] = None

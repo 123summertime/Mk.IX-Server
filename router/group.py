@@ -57,7 +57,7 @@ async def makeGroup(groupRegister: GroupRegister,
         payload=MessagePayload(
             content=f"{name}群已创建",
             meta=BroadcastMeta(
-                operation="create_group",
+                operation="group_create",
                 var={
                     "id": groupID,
                     "name": name,
@@ -98,8 +98,10 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
         payload=MessagePayload(
             content="该群已被群主解散",
             meta=BroadcastMeta(
-                operation="delete_group",
-                var={"id": groupInfo.group},
+                operation="group_disband",
+                var={
+                    "id": groupInfo.group,
+                },
             )
         )
     )
@@ -115,6 +117,13 @@ async def deleteGroup(info: Info = Depends(CheckPermission(PermissionValidate.ow
             target=targetInfo.uuid,
             blank="",
             payload=f'群"{groupInfo.name}"已解散',
+            meta=BroadcastMeta(
+                operation="group_disband",
+                var={
+                    "id": groupInfo.group,
+                    "type": "group",
+                }
+            )
         )
         asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
 
@@ -206,10 +215,11 @@ async def deleteSelf(info: Info = Depends(CheckPermission(PermissionValidate.mem
         payload=MessagePayload(
             content=f"{userInfo.username}已退出该群",
             meta=BroadcastMeta(
-                operation="left_group",
+                operation="group_leave",
                 var={
                     "id": userInfo.uuid,
                     "name": userInfo.username,
+                    "operator": userInfo.uuid,
                 }
             )
         )
@@ -263,11 +273,12 @@ async def banUser(t: GroupBan,
         payload=MessagePayload(
             content=f"{targetInfo.username}已被禁言{str(t.duration)}分钟" if t.duration else f"{targetInfo.username}已被解除禁言",
             meta=BroadcastMeta(
-                operation="ban" if t.duration else "lift_ban",
+                operation="group_ban" if t.duration else "group_lift_ban",
                 var={
                     "id": targetInfo.uuid,
                     "name": targetInfo.username,
                     "duration": t.duration,
+                    "operator": userInfo.uuid,
                 }
             )
         )
@@ -309,15 +320,16 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
         payload=MessagePayload(
             content=f"{targetInfo.username}已被移出群聊",
             meta=BroadcastMeta(
-                operation="left_group",
+                operation="group_kick",
                 var={
                     "id": targetInfo.uuid,
                     "name": targetInfo.username,
+                    "operator": userInfo.uuid,
                 }
             )
         )
     )
-    await WCM.sendingGroupMessage(targetInfo.uuid, removeMessage)
+    await WCM.sendingGroupMessage(userInfo.uuid, removeMessage)
 
     # 向被移除的人发送通知
     notificationMessage = NotificationMsgSchema(
@@ -326,7 +338,15 @@ async def deleteUser(info: Info = Depends(CheckPermission(PermissionValidate.adm
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
-        payload='你已被移出群"{}"',
+        payload='你已被移出群{}',
+        meta=BroadcastMeta(
+            operation="group_kick",
+            var={
+                "id": groupInfo.group,
+                "type": "group",
+                "operator": userInfo.uuid,
+            }
+        )
     )
     asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
     WCM.disconnectUserFromGroup(targetInfo.uuid, groupInfo.group)
@@ -358,7 +378,14 @@ async def addAdmin(info: Info = Depends(CheckPermission(PermissionValidate.owner
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
-        payload='你已成为群"{}"的管理员',
+        payload='你已成为群{}的管理员',
+        meta=BroadcastMeta(
+            operation="group_admin_set",
+            var={
+                "id": groupInfo.group,
+                "type": "group",
+            }
+        )
     )
     asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
 
@@ -387,7 +414,14 @@ async def deleteAdmin(info: Info = Depends(CheckPermission(PermissionValidate.ow
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
-        payload='你已被移出群"{}"的管理员',
+        payload='你已被移出群{}的管理员',
+        meta=BroadcastMeta(
+            operation="group_admin_unset",
+            var={
+                "id": groupInfo.group,
+                "type": "group",
+            }
+        )
     )
     asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
 
@@ -431,11 +465,11 @@ async def modifyGroupName(newName: GroupName,
         payload=MessagePayload(
             content=f'{userInfo.username}修改群名为{newName.name}',
             meta=BroadcastMeta(
-                operation="rename",
+                operation="group_rename",
                 var={
                     "id": userInfo.uuid,
                     "name": userInfo.username,
-                    "newname": newName.name,
+                    "new_name": newName.name,
                 }
             )
         )
@@ -529,10 +563,12 @@ async def join(answer: GroupA,
         payload=MessagePayload(
             content=f"{userInfo.username}加入该群",
             meta=BroadcastMeta(
-                operation="joined",
+                operation="group_joined",
                 var={
                     "id": userInfo.uuid,
                     "name": userInfo.username,
+                    "operator": userInfo.uuid,
+                    "way": "qa",
                 }
             )
         )
@@ -614,7 +650,7 @@ async def queryJoinRequest(group: str = Path(...),
 
     res = []
     for msg in messages:
-        targetInfo = ACCOUNT.query(
+        senderInfo = ACCOUNT.query(
             {"uuid": msg.senderID},
             {"lastUpdate": 1},
         )
@@ -625,7 +661,7 @@ async def queryJoinRequest(group: str = Path(...),
             targetKey=groupInfo.lastUpdate,
             state=msg.state,
             senderID=msg.senderID,
-            senderKey=targetInfo.lastUpdate,
+            senderKey=senderInfo.lastUpdate,
             payload=msg.payload
         )
         res.append(sysMessage.model_dump())
@@ -678,7 +714,15 @@ async def requestAccept(time: str = Path(...),
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
-        payload='你加入群{}'f'({groupInfo.group})的申请已通过',
+        payload='你加入群{}的申请已通过',
+        meta=BroadcastMeta(
+            operation="group_join_accepted",
+            var={
+                "id": groupInfo.group,
+                "type": "group",
+                "operator": userInfo.uuid,
+            }
+        )
     )
     asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
     sysMessage = SysMessageSchema(
@@ -716,10 +760,12 @@ async def requestAccept(time: str = Path(...),
         payload=MessagePayload(
             content=f"{targetInfo.username}加入该群",
             meta=BroadcastMeta(
-                operation="joined",
+                operation="group_joined",
                 var={
                     "id": targetInfo.uuid,
-                    "name": targetInfo.username
+                    "name": targetInfo.username,
+                    "operator": userInfo.uuid,
+                    "way": "request",
                 },
             )
         )
@@ -760,7 +806,15 @@ async def requestReject(time: str = Path(...),
         isGroupMessage=True,
         target=targetInfo.uuid,
         blank=groupInfo.group,
-        payload='你加入群{}'f'({groupInfo.group})的申请已被拒绝',
+        payload='你加入群{}的申请已被拒绝',
+        meta=BroadcastMeta(
+            operation="group_join_rejected",
+            var={
+                "id": groupInfo.group,
+                "type": "group",
+                "operator": userInfo.uuid,
+            }
+        )
     )
     asyncio.create_task(WCM.sendingNotificationMessage(targetInfo.uuid, groupInfo.name, notificationMessage))
 

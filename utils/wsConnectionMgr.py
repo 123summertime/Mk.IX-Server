@@ -1,11 +1,12 @@
 import json
 import asyncio
+from typing import Optional
 from collections import defaultdict
 
 from fastapi import WebSocket
 
-from public import Database, Limits, SystemMessageType
-from schema import GetMessageSchema, SendMessageSchema, SysMessageSchema, StorageSchema, NotificationMsgSchema
+from public import Database, Limits, SystemMessageType, API
+from schema import GetMessageSchema, SendMessageSchema, SysMessageSchema, StorageSchema, NotificationMsgSchema, BroadcastMeta
 from .rateLimit import rateLimit
 from .checker import beforeSendingCheck
 from .modifier import beforeSendingModify
@@ -174,12 +175,14 @@ class WebsocketConnectionManager:
                 else:
                     name = targetInfo.name if msg.isGroupMessage else targetInfo.username
                 msg.payload = msg.payload.format(name)
+                msg.meta.var["name"] = name
 
             m = SysMessageSchema(
                 time=msg.time,
                 type=msg.type,
                 subType=msg.subType,
                 payload=msg.payload,
+                meta=msg.meta,
             )
             await websocket.send_json(m.model_dump())
 
@@ -234,7 +237,7 @@ class WebsocketConnectionManager:
         )
 
         # 清理工作
-        self._users[userID].remove(deviceID)
+        self._users[userID].discard(deviceID)
         if not self._users[userID]:  # 用户所有设备都下线时
             for groupID in self._userGroups[userID]:
                 self._groups[groupID].removeUser(userID)
@@ -254,7 +257,7 @@ class WebsocketConnectionManager:
     def disconnectGroup(self, groupID):
         groupItem = self._groups[groupID]
         for userID in groupItem.onlineUserList:
-            self._userGroups[userID].remove(groupID)
+            self._userGroups[userID].discard(groupID)
         del self._groups[groupID]
 
     async def sendingNotificationMessage(self,
@@ -266,11 +269,13 @@ class WebsocketConnectionManager:
         collection = DB_CRUD(Database.NotificationDB.value, userID, NotificationMsgSchema)
         collection.add(message.model_dump())
 
+        message.meta.var["name"] = replace
         sysMessage = SysMessageSchema(
             time=message.time,
             type=message.type,
             subType=message.subType,
             payload=message.payload.format(replace),
+            meta=message.meta
         )
         asyncio.create_task(self.sendingSystemMessage(userID, sysMessage))
 
@@ -278,11 +283,12 @@ class WebsocketConnectionManager:
                                    userID: str,
                                    message: SysMessageSchema,
                                    *,
-                                   device: str = None):
+                                   device: Optional[str] = None):
+        post = message.model_dump()
         for d in self._users[userID]:
             if d == device or not device:
                 ws = self._device[d]
-                asyncio.create_task(ws.send_json(message.model_dump()))
+                asyncio.create_task(ws.send_json(post))
 
     async def sendingEchoMessage(self,
                                  deviceID: str,
@@ -294,7 +300,7 @@ class WebsocketConnectionManager:
     async def sendingGroupMessage(self,
                                   userID: str,
                                   message: GetMessageSchema,
-                                  device: str | None = None):
+                                  device: Optional[str] = None):
         if message.groupType == "friend":
             message.group = getVirtualGroupID(userID, message.group)
         groupID = message.group
@@ -326,7 +332,7 @@ class WebsocketConnectionManager:
 
         userInfo = ACCOUNT.query(
             {"uuid": message.senderID},
-            {"_id": 0, "lastUpdate": 1}
+            {"lastUpdate": 1}
         )
 
         sendMessage = SendMessageSchema(
@@ -353,6 +359,7 @@ class WebsocketConnectionManager:
                     ws = self._device[d]
                     asyncio.create_task(ws.send_json(m))
 
+        API.LOGGER.value.info(f"{groupID}: {sendMessage.model_dump()}")
         if device:
             # 返回发送的消息ID
             sysMsg = SysMessageSchema(
