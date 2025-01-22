@@ -45,9 +45,9 @@ Limits:
   GROUP_TEXT_LENGTH_RANGE:     # 发送文本信息的最大长度 默认[0, 4096]
     MIN: 0
     MAX: 4096
-  GROUP_IMAGE_SIZE_RANGE:      # 发送图片信息的最大大小 默认[0, 1024] 单位: KB  (前端会转换为webp再发送，4K图片也只有100多KB)
+  GROUP_IMAGE_SIZE_RANGE:      # 发送图片信息的最大大小 默认[0, 2048] 单位: KB  (前端会转换为webp再发送，4K图片也只有100多KB)
     MIN: 0
-    MAX: 1024
+    MAX: 2048
   GROUP_BAN_MAX_TIME: 43200           # 群禁言最大时长 默认43200 单位：分钟
   MESSAGE_EXPIRE_MINUTES: 10080       # 群消息过期时间(超过此时间还未接收就不会再收到) 默认10080 单位：分钟
   REQUEST_EXPIRE_MINUTES: 10080       # 申请过期时间(入群申请，好友申请) 默认10080 单位：分钟

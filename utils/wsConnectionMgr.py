@@ -359,7 +359,7 @@ class WebsocketConnectionManager:
                     ws = self._device[d]
                     asyncio.create_task(ws.send_json(m))
 
-        API.LOGGER.value.info(f"{groupID}: {sendMessage.model_dump()}")
+        API.LOGGER.value.debug(f"{groupID}: {sendMessage.model_dump()}")
         if device:
             # 返回发送的消息ID
             sysMsg = SysMessageSchema(

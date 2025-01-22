@@ -2,7 +2,7 @@ import asyncio
 from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from fastapi.responses import StreamingResponse
 
 from depends import PermissionValidate, TargetValidate, CheckPermission, RequestValidate, CheckTarget, \
@@ -636,6 +636,7 @@ async def joinRequest(reason: Reason,
 
 @groupRouter.get('/{group}/verify/request')
 async def queryJoinRequest(group: str = Path(...),
+                           device: str = Query(...),
                            info: Info = Depends(CheckPermission(PermissionValidate.admin))):
     '''
     获取该群的验证消息 管理员权限
@@ -665,7 +666,7 @@ async def queryJoinRequest(group: str = Path(...),
             payload=msg.payload
         )
         res.append(sysMessage.model_dump())
-        asyncio.create_task(WCM.sendingSystemMessage(userInfo.uuid, sysMessage))
+        asyncio.create_task(WCM.sendingSystemMessage(userInfo.uuid, sysMessage, device=device))
 
     return res
 

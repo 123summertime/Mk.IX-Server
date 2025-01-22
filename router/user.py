@@ -378,7 +378,8 @@ async def friendRequest(reason: Reason,
 
 
 @userRouter.get('/{uuid}/verify/request')
-async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
+async def queryFriendRequest(device: str = Query(...),
+                             userInfo: UserSchema = Depends(getSelfInfo)):
     '''
     获取好友申请
     结果通过ws(WCM)发送
@@ -404,7 +405,7 @@ async def queryFriendRequest(userInfo: UserSchema = Depends(getSelfInfo)):
             senderKey=senderInfo.lastUpdate,
             payload=msg.payload,
         )
-        asyncio.create_task(WCM.sendingSystemMessage(userInfo.uuid, sysMessage))
+        asyncio.create_task(WCM.sendingSystemMessage(userInfo.uuid, sysMessage, device=device))
 
 
 @userRouter.post('/{uuid}/verify/request/{time}')
