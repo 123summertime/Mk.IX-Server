@@ -4,12 +4,16 @@ services:
     container_name: mongodb
     ports:
       - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
 
   fastapi:
     build: .
-    container_name: sgr
+    container_name: mkix
     ports:
       - "8000:8000"
     depends_on:
       - mongodb
 
+volumes:
+  mongodb_data:
