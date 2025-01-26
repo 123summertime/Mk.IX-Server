@@ -149,7 +149,7 @@ class WebsocketConnectionManager:
         for groupID in friendVirtualGroupIDs:
             self._userConnectToGroupItem(userID, groupID, "friend")
 
-        lastSeen = userInfo.lastSeen.get(deviceID, max(userInfo.lastSeen.values()) if userInfo.lastSeen else timestamp())
+        lastSeen = userInfo.lastSeen.get(deviceID, str(int(timestamp()) - 3 * 24 * 60 * 1000))  # 新设备获取3天内的历史消息
         asyncio.create_task(self._postOfflineNotificationMessages(userID, lastSeen, websocket))
         asyncio.create_task(self._postOfflineGroupMessages(userID, groupIDs, lastSeen, websocket))
         asyncio.create_task(self._postOfflineGroupMessages(userID, friendVirtualGroupIDs, lastSeen, websocket))
