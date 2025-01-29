@@ -1,6 +1,7 @@
 import json
 import asyncio
 from typing import Optional
+from functools import lru_cache
 from collections import defaultdict
 
 from fastapi import WebSocket
@@ -116,7 +117,7 @@ class WebsocketConnectionManager:
             try:
                 ws = self._device[device]
                 await ws.close()
-                del self._device[device]
+                self._device.pop(device, "")
             except Exception:
                 pass
 
@@ -149,7 +150,7 @@ class WebsocketConnectionManager:
         for groupID in friendVirtualGroupIDs:
             self._userConnectToGroupItem(userID, groupID, "friend")
 
-        lastSeen = userInfo.lastSeen.get(deviceID, str(int(timestamp()) - 3 * 24 * 60 * 1000))  # 新设备获取3天内的历史消息
+        lastSeen = userInfo.lastSeen.get(deviceID, str(int(timestamp()) - 3 * 24 * 60 * 60 * 1000))  # 新设备获取3天内的历史消息
         asyncio.create_task(self._postOfflineNotificationMessages(userID, lastSeen, websocket))
         asyncio.create_task(self._postOfflineGroupMessages(userID, groupIDs, lastSeen, websocket))
         asyncio.create_task(self._postOfflineGroupMessages(userID, friendVirtualGroupIDs, lastSeen, websocket))
@@ -194,28 +195,37 @@ class WebsocketConnectionManager:
         '''
         发送用户离线时收到的消息
         '''
+        BATCH_SIZE = 100
+
+        @lru_cache(maxsize=128)
+        def getLastUpdate(account):
+            return ACCOUNT.query(
+                    {"uuid": account},
+                    {"_id": 0, "lastUpdate": 1}
+                ).lastUpdate
+
         for groupID in groupIDs:
             type_ = self._groups[groupID].getType
-
             messages = self._groups[groupID].collectionCRUD.queryMany(
                 {"time": {"$gt": lastSeen}},
                 {"_id": 0},
             )
 
-            for msg in messages:
-                userInfo = ACCOUNT.query(
-                    {"uuid": msg.senderID},
-                    {"_id": 0, "lastUpdate": 1}
-                )
+            for i, msg in enumerate(messages):
+                lastUpdate = getLastUpdate(msg.senderID)
                 m = SendMessageSchema(
                     time=msg.time,
                     type=msg.type,
                     group=groupID if type_ == "group" else getTargetFromVirtualGroupID(groupID, userID),
                     senderID=msg.senderID,
-                    senderKey=userInfo.lastUpdate,
+                    senderKey=lastUpdate,
                     payload=msg.payload,
                 )
-                asyncio.create_task(websocket.send_json(m.model_dump()))
+                messages[i] = m.model_dump()
+
+            for i in range(0, len(messages), BATCH_SIZE):
+                await asyncio.gather(*[websocket.send_json(msg) for msg in messages[i:i+BATCH_SIZE]])
+                await asyncio.sleep(0.001)
 
     async def disconnectUser(self,
                              userID: str,
@@ -242,10 +252,10 @@ class WebsocketConnectionManager:
             for groupID in self._userGroups[userID]:
                 self._groups[groupID].removeUser(userID)
                 if self._groups[groupID].onlineUserCount == 0:
-                    del self._groups[groupID]
-            del self._users[userID]
-            del self._userGroups[userID]
-        del self._device[deviceID]
+                    self._groups.pop(groupID)
+            self._users.pop(userID)
+            self._userGroups.pop(userID)
+        self._device.pop(deviceID)
 
     def disconnectUserFromGroup(self,
                                 userID: str,
@@ -258,7 +268,7 @@ class WebsocketConnectionManager:
         groupItem = self._groups[groupID]
         for userID in groupItem.onlineUserList:
             self._userGroups[userID].discard(groupID)
-        del self._groups[groupID]
+        self._groups.pop(groupID)
 
     async def sendingNotificationMessage(self,
                                          userID: str,

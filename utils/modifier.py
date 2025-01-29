@@ -119,7 +119,8 @@ def beforeSendingModify(userID: str,
     '''
     如有必要，发送消息前对消息进行原地修改
     '''
-    if "at" not in message.payload.meta:
+    # 私聊清空at
+    if "at" not in message.payload.meta or message.groupType == "friend":
         message.payload.meta["at"] = []
     if "encrypt" not in message.payload.meta:
         message.payload.meta["encrypt"] = False

@@ -83,6 +83,8 @@ def getSelfInfo(token: str = Depends(Auth.OAUTH2.value)) -> UserSchema:
         {"uuid": payload["uuid"]},
         {"password": 0, "avatar": 0},
     )
+    if not selfInfo:
+        raise HTTPException(status_code=404, detail="用户不存在")
     return selfInfo
 
 
