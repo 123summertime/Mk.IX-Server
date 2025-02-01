@@ -195,9 +195,9 @@ class WebsocketConnectionManager:
         '''
         发送用户离线时收到的消息
         '''
-        BATCH_SIZE = 100
+        BATCH_SIZE = 50
 
-        @lru_cache(maxsize=128)
+        @lru_cache(maxsize=64)
         def getLastUpdate(account):
             return ACCOUNT.query(
                     {"uuid": account},
@@ -223,9 +223,10 @@ class WebsocketConnectionManager:
                 )
                 messages[i] = m.model_dump()
 
+            # 每20ms并发BATCH_SIZE条
             for i in range(0, len(messages), BATCH_SIZE):
                 await asyncio.gather(*[websocket.send_json(msg) for msg in messages[i:i+BATCH_SIZE]])
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(0.02)
 
     async def disconnectUser(self,
                              userID: str,
